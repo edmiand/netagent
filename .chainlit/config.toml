@@ -156,7 +156,8 @@ alert_style = "classic"
 logo_file_url = ""
 
 # Load assistant avatar image directly from URL.
-default_avatar_file_url = ""
+# Filename is also set in config/branding.yaml — keep them in sync.
+default_avatar_file_url = "/public/logos/rogers-logo.svg"
 
 # Avatar size in pixels (default: 20).
 # avatar_size = 20

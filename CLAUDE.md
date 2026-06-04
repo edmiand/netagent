@@ -10,7 +10,7 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - VM1 (192.168.64.19): Open5GS 5G core + MCP SSE server at :8080/sse
 - VM2 (this machine, "lazy"): Chainlit app + LangGraph + Ollama
 - MCP connection: HTTP SSE — no local MCP process, just a URL
-- LLM: Ollama at http://localhost:11434/v1 (model: gpt-oss:20b-cloud)
+- LLM: Ollama at http://localhost:11434/v1 (active model set in config/models.yaml)
 
 ## Key paths
 - config/models.yaml  — model selection (change 'active' to switch models)
@@ -46,6 +46,10 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - langchain-mcp-adapters 0.2.2
 - mcp                    1.27.2
 - langgraph 1.2.x: create_react_agent uses 'prompt=' not 'state_modifier='
+- langchain-mcp-adapters 0.2.x: MultiServerMCPClient does NOT support async context manager;
+  use: client = MultiServerMCPClient(servers); tools = await client.get_tools()
+- Chainlit 2.x: @cl.set_starters only renders on a truly empty chat (no messages yet);
+  for shortcuts accessible throughout a conversation, attach cl.Action buttons to messages
 
 ## Constraints
 - Chainlit 2.x is installed — use v2 API only, not v1 patterns
@@ -63,6 +67,14 @@ chainlit run app.py --host 0.0.0.0 --port 8000
 ## Switching models
 Edit config/models.yaml — change the 'active' field, restart chainlit
 
-## Demo scenario
-Subscriber can't attach → agent runs health snapshot → tails logs →
-restarts degraded NF → verifies recovery → generates Mermaid call flow diagram
+## Demo scenarios (3 action buttons on every message)
+- Health Snapshot: calls system_health_snapshot, reports NF status table with emojis
+- Watch Subscriber Attach: calls list_ue_sessions, shows registered UEs and PDU sessions
+- Debug Attach Failure: calls system_health_snapshot to triage the network
+
+## Agent behaviour (system prompt rules)
+- Calls EXACTLY ONE tool per response — no autonomous chaining
+- Never restarts/stops/starts a NF unless user explicitly asks
+- Never suggests shell commands — uses MCP tools directly
+- No preamble before tool calls ("let's call X" etc. is forbidden)
+- Tool schema knowledge comes from MCP automatically — do not list tools in prompts/system.txt

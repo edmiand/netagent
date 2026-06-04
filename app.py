@@ -1,9 +1,19 @@
+import yaml
+from pathlib import Path
+
 import chainlit as cl
 from langchain_core.messages import HumanMessage
 
 from agent.llm import get_active_model_name
 from agent.mcp_bridge import get_mcp_tools
 from agent.graph import create_agent
+
+_BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
+
+
+def _load_branding() -> dict:
+    with open(_BRANDING_PATH) as fh:
+        return yaml.safe_load(fh)
 
 TOOL_ICONS = {
     "nf_lifecycle": "⚙️",
@@ -13,7 +23,7 @@ TOOL_ICONS = {
     "tail_nf_logs": "📜",
 }
 
-_DEMO_ACTIONS = [
+_SCENARIO_ACTIONS = [
     cl.Action(
         name="health_snapshot",
         label="🏥 Health Snapshot",
@@ -32,6 +42,25 @@ _DEMO_ACTIONS = [
 ]
 
 
+@cl.set_starters
+async def set_starters():
+    """Shown on empty chat screen before any message is sent."""
+    return [
+        cl.Starter(
+            label="🏥 Health Snapshot",
+            message="Call system_health_snapshot now.",
+        ),
+        cl.Starter(
+            label="👀 Watch Subscriber Attach",
+            message="Call list_ue_sessions now.",
+        ),
+        cl.Starter(
+            label="🔍 Debug Attach Failure",
+            message="Call system_health_snapshot now.",
+        ),
+    ]
+
+
 @cl.on_chat_start
 async def on_chat_start():
     mcp_ctx = get_mcp_tools()
@@ -41,18 +70,18 @@ async def on_chat_start():
     agent = create_agent(tools)
     cl.user_session.set("agent", agent)
 
+    branding = _load_branding()
     model_name = get_active_model_name()
     tool_names = "  ".join(
         f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in tools
     )
     await cl.Message(
         content=(
-            f"**5G Core Agent ready**\n\n"
+            f"**{branding['welcome_title']}**\n\n"
             f"Model: `{model_name}`\n\n"
-            f"**Tools:** {tool_names}\n\n"
-            f"Ask me anything about the network, or pick a scenario below."
+            f"**Tools:** {tool_names}"
         ),
-        actions=_DEMO_ACTIONS,
+        actions=_SCENARIO_ACTIONS,
     ).send()
 
 
@@ -81,7 +110,7 @@ async def _run_agent(user_input: str):
 
     active_steps: dict[str, cl.Step] = {}
     tools_active = 0
-    final_msg = cl.Message(content="")
+    final_msg = cl.Message(content="", actions=_SCENARIO_ACTIONS)
     await final_msg.send()
 
     try:
@@ -124,7 +153,6 @@ async def _run_agent(user_input: str):
                             await final_msg.stream_token(part["text"])
 
     except Exception as exc:
-        # Close any open tool steps so the UI isn't left hanging
         for step in active_steps.values():
             step.output = f"❌ Error: {exc}"
             await step.update()
