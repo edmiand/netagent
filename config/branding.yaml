@@ -1,6 +1,6 @@
-# Branding configuration
-# Place logo files in public/logos/ — Chainlit serves them at /public/logos/<filename>
-# After changing logo_file, also update default_avatar_file_url in .chainlit/config.toml
+# Branding configuration — edit here, changes apply on next start
+# Place logo files in public/logos/
 
-logo_file: rogers-logo.svg
+agent_name: "5G Core Agent"
 welcome_title: "5G Core Agent ready"
+logo_file: rogers-logo.svg

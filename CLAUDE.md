@@ -62,7 +62,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 
 ## Running the app
 source .venv/bin/activate
-chainlit run app.py --host 0.0.0.0 --port 8000
+python start.py               # syncs branding.yaml → config.toml, then starts Chainlit
+# or with explicit args:
+python start.py --host 0.0.0.0 --port 8000
 
 ## Switching models
 Edit config/models.yaml — change the 'active' field, restart chainlit

@@ -70,7 +70,8 @@ cp .env.example .env
 python test_integration.py
 
 # 6. Start the app
-chainlit run app.py --host 0.0.0.0 --port 8000
+python start.py               # syncs branding then launches Chainlit
+# or: python start.py --host 0.0.0.0 --port 8000
 ```
 
 Open **http://\<VM2-IP\>:8000** in a browser.
@@ -118,6 +119,16 @@ test_integration.py    # 3-check integration test (LLM · MCP · agent round-tri
 ```
 
 ---
+
+## Branding
+
+Edit `config/branding.yaml` — all three values are applied automatically on next start:
+
+```yaml
+agent_name: "5G Core Agent"      # Chainlit header name
+welcome_title: "5G Core Agent ready"  # bold heading in first chat message
+logo_file: rogers-logo.svg        # file must exist in public/logos/
+```
 
 ## Demo scenarios
 
