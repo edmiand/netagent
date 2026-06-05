@@ -1,3 +1,7 @@
+import re
+import shutil
+import subprocess
+import tempfile
 import yaml
 from pathlib import Path
 
@@ -7,6 +11,9 @@ from langchain_core.messages import HumanMessage
 from agent.llm import get_active_model_name
 from agent.mcp_bridge import get_mcp_tools
 from agent.graph import create_agent
+
+_MERMAID_RE = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
+_PUPPETEER_CFG = Path(__file__).parent / "config" / "puppeteer-config.json"
 
 _BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
 
@@ -21,6 +28,7 @@ TOOL_ICONS = {
     "subscriber_crud": "👤",
     "list_ue_sessions": "📋",
     "tail_nf_logs": "📜",
+    "trace": "🔍",
 }
 
 _SCENARIO_ACTIONS = [
@@ -105,6 +113,48 @@ async def on_message(message: cl.Message):
     await _run_agent(message.content)
 
 
+def _render_mermaid_blocks(msg: cl.Message) -> list[str]:
+    """Render ```mermaid blocks in msg.content to PNG via mmdc.
+
+    Replaces each fenced block with an inline cl.Image element.
+    Returns a list of temp dirs to clean up after the message is sent.
+    """
+    matches = list(_MERMAID_RE.finditer(msg.content))
+    if not matches:
+        return []
+
+    mmdc = shutil.which("mmdc")
+    if not mmdc:
+        return []
+
+    tmp_dirs: list[str] = []
+    images: list[cl.Image] = []
+    clean_content = msg.content
+
+    for i, match in enumerate(matches):
+        mermaid_text = match.group(1).strip()
+        tmp_dir = Path(tempfile.mkdtemp())
+        tmp_dirs.append(str(tmp_dir))
+        src = tmp_dir / "diagram.mmd"
+        out = tmp_dir / "diagram.png"
+        src.write_text(mermaid_text)
+
+        cmd = [mmdc, "-i", str(src), "-o", str(out), "-b", "white"]
+        if _PUPPETEER_CFG.exists():
+            cmd += ["--puppeteerConfigFile", str(_PUPPETEER_CFG)]
+        result = subprocess.run(cmd, capture_output=True)
+
+        if result.returncode == 0 and out.exists():
+            images.append(cl.Image(path=str(out), name=f"call_flow_{i}", display="inline"))
+            clean_content = clean_content.replace(match.group(0), "")
+
+    if images:
+        msg.content = clean_content.strip()
+        msg.elements = list(msg.elements or []) + images
+
+    return tmp_dirs
+
+
 async def _run_agent(user_input: str):
     agent = cl.user_session.get("agent")
 
@@ -167,7 +217,10 @@ async def _run_agent(user_input: str):
         else:
             final_msg.content = f"❌ **Agent error:** {root_cause}"
 
+    tmp_dirs = _render_mermaid_blocks(final_msg)
     await final_msg.update()
+    for d in tmp_dirs:
+        shutil.rmtree(d, ignore_errors=True)
 
 
 @cl.on_chat_end

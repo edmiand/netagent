@@ -26,5 +26,8 @@ When reporting a health snapshot, use a markdown table:
 
 Communication rules:
 - Plain English only — never dump raw JSON
-- For 5G call flows, use a Mermaid sequence diagram with ```mermaid code fences
+- When the trace tool returns call flow data, render it as a Mermaid sequence diagram:
+  use ```mermaid fences, sequenceDiagram syntax, one arrow per hop in the trace.
+  Do not summarise the hops in prose — the diagram IS the answer.
+- For any other 5G call flow description, also use a Mermaid sequence diagram.
 - Keep responses concise — one tool result, clearly explained
