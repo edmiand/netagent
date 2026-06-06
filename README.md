@@ -18,7 +18,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 └─────────────────────────────┘        └──────────────────────────────────┘
 ```
 
-**VM2 stack:** Python 3.13 · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
+**VM2 stack:** Python 3.11+ · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
 **VM1 stack:** Open5GS · MCP SSE server exposing 5 network operations tools
 
 ---
@@ -42,39 +42,172 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 - MCP SSE server running on port 8080 (`http://192.168.64.19:8080/sse`)
 
 ### VM2 — this machine
-- Python 3.13+
+- Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
+- Python 3.11+ (see [System dependencies](#1-system-dependencies) below)
 - [Ollama](https://ollama.com) installed and running at `http://localhost:11434`
-- At least one supported model pulled in Ollama (see [Switching models](#switching-models))
+- Network access to VM1 on port 8080
+- Port 8000 open for inbound connections (Chainlit UI)
 
 ---
 
-## Quick start
+## Fresh VM Setup
+
+Follow these steps in order on a clean Ubuntu VM. Each section is a
+self-contained block of shell commands you can copy and run as-is.
+
+### 1. System dependencies
 
 ```bash
-# 1. Clone
+sudo apt-get update
+sudo apt-get install -y git curl build-essential
+
+# Ubuntu 24.04 ships Python 3.12 — already satisfies >=3.11, skip the next block.
+# Ubuntu 22.04 ships Python 3.10 — add deadsnakes PPA to get 3.11:
+sudo apt-get install -y software-properties-common
+sudo add-apt-repository -y ppa:deadsnakes/ppa
+sudo apt-get update
+sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
+```
+
+> **Ubuntu 24.04 users:** replace `python3.11` with `python3` in all commands
+> below — the system Python is already 3.12.
+
+### 2. Install Ollama
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+
+# The installer registers and starts the ollama systemd service automatically.
+# Verify it is running:
+systemctl status ollama
+```
+
+### 3. Pull a model
+
+`qwen2.5:7b` is the recommended starting model — small enough to run on a
+4-vCPU / 8 GB VM and fast enough for interactive demos:
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+Heavier models listed in `config/models.yaml` (`gemma4:31b-cloud`,
+`gpt-oss:20b-cloud`) are available on specialised Ollama deployments and
+require the matching model to be served at `localhost:11434`. Update
+`config/models.yaml` → `active` to switch after pulling.
+
+### 4. Open the firewall (if UFW is active)
+
+```bash
+# Allow inbound traffic to the Chainlit UI
+sudo ufw allow 8000/tcp
+sudo ufw status
+```
+
+### 5. Clone and install the app
+
+```bash
+# Clone
 git clone git@github.com:edmiand/5g-demo-app.git
 cd 5g-demo-app
 
-# 2. Create and activate virtualenv
-python3 -m venv .venv
+# Create and activate virtualenv (adjust python3.11 → python3 on Ubuntu 24.04)
+python3.11 -m venv .venv
 source .venv/bin/activate
 
-# 3. Install dependencies
+# Install all Python dependencies
+pip install --upgrade pip
 pip install -e .
 
-# 4. Copy environment file
+# Copy environment file
 cp .env.example .env
 # .env is pre-configured for Ollama — no edits needed unless customising
+```
 
-# 5. Run the integration tests (optional but recommended)
+### 6. Point the app at your VM1
+
+Edit `config/mcp.yaml` and set the correct IP/port for your VM1:
+
+```yaml
+servers:
+  open5gs:
+    transport: sse
+    url: http://<VM1-IP>:8080/sse   # ← replace with your VM1 address
+```
+
+### 7. Set the active model
+
+Edit `config/models.yaml` and set `active` to the model you pulled:
+
+```yaml
+active: qwen2.5:7b
+```
+
+### 8. Run the integration tests (optional but recommended)
+
+```bash
+source .venv/bin/activate
 python test_integration.py
+# Exit code 0 = LLM reachable · MCP tools loaded · agent round-trip OK
+```
 
-# 6. Start the app
-python start.py               # syncs branding then launches Chainlit
+### 9. Start the app
+
+```bash
+source .venv/bin/activate
+python start.py                    # binds to 0.0.0.0:8000 by default
 # or: python start.py --host 0.0.0.0 --port 8000
 ```
 
 Open **http://\<VM2-IP\>:8000** in a browser.
+
+---
+
+## Run as a systemd service (persistent)
+
+Create `/etc/systemd/system/5g-demo-app.service` — adjust `User`, `WorkingDirectory`,
+and the Python path to match your setup:
+
+```ini
+[Unit]
+Description=5G Core Agent (Chainlit)
+After=network.target ollama.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/5g-demo-app
+ExecStart=/home/ubuntu/5g-demo-app/.venv/bin/python start.py --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now 5g-demo-app
+sudo systemctl status 5g-demo-app
+```
+
+---
+
+## Quick start (existing VM)
+
+If the VM already has Python 3.11+, Ollama, and a model pulled:
+
+```bash
+git clone git@github.com:edmiand/5g-demo-app.git
+cd 5g-demo-app
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cp .env.example .env
+# Edit config/mcp.yaml → set VM1 address
+# Edit config/models.yaml → set active model
+python start.py
+```
 
 ---
 
@@ -83,7 +216,7 @@ Open **http://\<VM2-IP\>:8000** in a browser.
 ### Model — `config/models.yaml`
 
 ```yaml
-active: gemma4:31b-cloud   # ← change this line to switch models
+active: qwen2.5:7b   # ← change this line to switch models
 ```
 
 Available entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`, `qwen2.5:7b`.  
@@ -148,14 +281,14 @@ You can also type free-form questions, e.g.:
 ## Switching models
 
 ```bash
+# Pull the model in Ollama first
+ollama pull qwen2.5:7b
+
 # Edit config/models.yaml
 active: qwen2.5:7b
 
-# Make sure the model is pulled in Ollama
-ollama pull qwen2.5:7b
-
-# Restart Chainlit
-chainlit run app.py --host 0.0.0.0 --port 8000
+# Restart the app
+python start.py
 ```
 
 ---
