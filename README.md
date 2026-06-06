@@ -44,7 +44,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 ### VM2 — this machine
 - Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
 - Python 3.11+ (see [System dependencies](#1-system-dependencies) below)
-- [Ollama](https://ollama.com) installed and running at `http://localhost:11434`
+- [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only — no GPU required)
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
 
@@ -82,19 +82,21 @@ curl -fsSL https://ollama.com/install.sh | sh
 systemctl status ollama
 ```
 
-### 3. Pull a model
+### 3. Configure cloud models
 
-`qwen2.5:7b` is the recommended starting model — small enough to run on a
-4-vCPU / 8 GB VM and fast enough for interactive demos:
+This app uses **cloud-hosted models** (`gemma4:31b-cloud`, `gpt-oss:20b-cloud`)
+— no local GPU is required. Ollama serves as the API gateway only; the model
+computation runs in the cloud.
 
-```bash
-ollama pull qwen2.5:7b
+No `ollama pull` is needed. Verify Ollama is reachable and leave the default
+`active` entry in `config/models.yaml` as-is:
+
+```yaml
+active: gemma4:31b-cloud
 ```
 
-Heavier models listed in `config/models.yaml` (`gemma4:31b-cloud`,
-`gpt-oss:20b-cloud`) are available on specialised Ollama deployments and
-require the matching model to be served at `localhost:11434`. Update
-`config/models.yaml` → `active` to switch after pulling.
+> **Do not** pull `qwen2.5:7b` or other local models — they require a GPU
+> and will be slow or fail on a CPU-only VM.
 
 ### 4. Open the firewall (if UFW is active)
 
@@ -216,11 +218,11 @@ python start.py
 ### Model — `config/models.yaml`
 
 ```yaml
-active: qwen2.5:7b   # ← change this line to switch models
+active: gemma4:31b-cloud   # ← change this line to switch models
 ```
 
-Available entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`, `qwen2.5:7b`.  
-Add a new block under `models:` to register any other Ollama model.  
+Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`.  
+No GPU required — Ollama is used as a gateway only.  
 Restart Chainlit after changing.
 
 ### MCP server — `config/mcp.yaml`
@@ -281,11 +283,10 @@ You can also type free-form questions, e.g.:
 ## Switching models
 
 ```bash
-# Pull the model in Ollama first
-ollama pull qwen2.5:7b
+# Edit config/models.yaml — choose from the cloud-hosted entries
+active: gpt-oss:20b-cloud   # or gemma4:31b-cloud
 
-# Edit config/models.yaml
-active: qwen2.5:7b
+# No ollama pull needed — these models run in the cloud
 
 # Restart the app
 python start.py
