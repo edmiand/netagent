@@ -25,7 +25,20 @@ stop() {
         return
     fi
     local pid; pid=$(_pid)
-    kill "$pid"
+    # Kill chainlit child process(es) first, then the start.py wrapper
+    pkill -P "$pid" 2>/dev/null
+    kill "$pid" 2>/dev/null
+    # Wait up to 5 s for the process to exit
+    local i
+    for i in {1..10}; do
+        sleep 0.5
+        kill -0 "$pid" 2>/dev/null || break
+    done
+    # Force kill if still alive
+    if kill -0 "$pid" 2>/dev/null; then
+        pkill -9 -P "$pid" 2>/dev/null
+        kill -9 "$pid" 2>/dev/null
+    fi
     rm -f "$PID_FILE"
     echo "Stopped (PID $pid)"
 }
@@ -41,7 +54,7 @@ status() {
 case "${1:-help}" in
     start)   start ;;
     stop)    stop ;;
-    restart) stop; sleep 1; start ;;
+    restart) stop; start ;;
     status)  status ;;
     logs)    tail -f "$LOG_FILE" ;;
     *)       echo "Usage: $0 {start|stop|restart|status|logs}" ;;

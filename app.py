@@ -2,6 +2,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 import yaml
 from pathlib import Path
 
@@ -77,6 +78,7 @@ async def on_chat_start():
 
     agent = create_agent(tools)
     cl.user_session.set("agent", agent)
+    cl.user_session.set("thread_id", str(uuid.uuid4()))
 
     branding = _load_branding()
     model_name = get_active_model_name()
@@ -157,6 +159,7 @@ def _render_mermaid_blocks(msg: cl.Message) -> list[str]:
 
 async def _run_agent(user_input: str):
     agent = cl.user_session.get("agent")
+    thread_id = cl.user_session.get("thread_id")
 
     active_steps: dict[str, cl.Step] = {}
     tools_active = 0
@@ -166,6 +169,7 @@ async def _run_agent(user_input: str):
     try:
         async for event in agent.astream_events(
             {"messages": [HumanMessage(content=user_input)]},
+            config={"configurable": {"thread_id": thread_id}},
             version="v2",
         ):
             kind = event["event"]
