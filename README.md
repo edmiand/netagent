@@ -32,6 +32,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 | `tail_nf_logs` | Read and filter log entries from any NF log file |
 | `list_ue_sessions` | List all active UE registrations and PDU sessions |
 | `subscriber_crud` | Create / read / update / delete subscriber profiles in MongoDB |
+| `read_nf_config` | Read parsed YAML config for any NF (explorable subtree path) |
 
 ---
 
@@ -47,6 +48,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 - [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only — no GPU required)
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
+- Outbound internet access to `https://mermaid.ink` (call flow diagram rendering — no install needed, falls back to raw Mermaid code if unreachable)
 
 ---
 
@@ -277,6 +279,17 @@ You can also type free-form questions, e.g.:
 - `show subscriber imsi-999700000000001`
 - `tail amf logs for the last 10 minutes`
 - `restart the smf`
+
+### Call flow diagrams
+
+Ask the agent about any 5G procedure and it will produce a Mermaid sequence diagram rendered as an inline PNG:
+
+- `show me the 5G registration call flow`
+- `draw the PDU session establishment procedure`
+- `what does the authentication flow look like between UE, AMF, and AUSF?`
+
+**How it works:** the agent generates Mermaid syntax → `app.py` base64-encodes it and fetches a PNG from `https://mermaid.ink` → the image embeds inline in the chat.  
+**Dependencies:** none beyond `pip install -e .` (`httpx` is already included). Requires outbound internet access to `mermaid.ink`. If the fetch fails, the raw Mermaid code block is shown as a fallback.
 
 ---
 
