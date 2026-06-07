@@ -10,7 +10,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 
 ```
 ┌─────────────────────────────┐        ┌──────────────────────────────────┐
-│  VM2  (this machine)        │        │  VM1  (192.168.64.19)            │
+│  VM2  (this machine)        │        │  VM1  (your 5G core host)        │
 │                             │        │                                  │
 │  Chainlit UI  :8000         │        │  Open5GS 5G core (systemd)       │
 │  LangGraph ReAct agent      │◄──SSE──│  MCP SSE server  :8080/sse       │
@@ -39,7 +39,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 
 ### VM1 — must already be running
 - Open5GS 5G core installed and started
-- MCP SSE server running on port 8080 (`http://192.168.64.19:8080/sse`)
+- MCP SSE server running on port 8080 (`http://<VM1-IP>:8080/sse`)
 
 ### VM2 — this machine
 - Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
@@ -231,7 +231,7 @@ Restart Chainlit after changing.
 servers:
   open5gs:
     transport: sse
-    url: http://192.168.64.19:8080/sse  # ← VM1 address
+    url: http://<VM1-IP>:8080/sse  # ← replace with your VM1 address
 ```
 
 ---
@@ -301,7 +301,7 @@ source .venv/bin/activate
 python test_integration.py
 ```
 
-Tests check: LLM reachability · MCP tool loading (expects 5 tools) · agent round-trip invocation.  
+Tests check: LLM reachability · MCP tool loading (required tools present) · agent round-trip invocation.  
 Exit code 0 = all pass.
 
 ---
