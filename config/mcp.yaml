@@ -1,4 +1,4 @@
 servers:
   open5gs:
     transport: sse
-    url: http://192.168.64.19:8080/sse
+    url: http://192.168.64.33:8080/sse

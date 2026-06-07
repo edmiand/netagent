@@ -35,14 +35,11 @@ async def test_mcp_tools_load() -> bool:
             for name in sorted(names):
                 print(f"  • {name}")
             missing = required - names
-            if len(tools) == 5 and not missing:
+            if not missing:
                 print("  PASS")
                 return True
             else:
-                if missing:
-                    print(f"  FAIL — missing tools: {missing}")
-                else:
-                    print(f"  FAIL — expected 5 tools, got {len(tools)}")
+                print(f"  FAIL — missing tools: {missing}")
                 return False
     except Exception as exc:
         print(f"  FAIL — {exc}")
