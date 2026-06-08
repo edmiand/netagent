@@ -54,6 +54,10 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   use: client = MultiServerMCPClient(servers); tools = await client.get_tools()
 - Chainlit 2.x: @cl.set_starters only renders on a truly empty chat (no messages yet);
   for shortcuts accessible throughout a conversation, attach cl.Action buttons to messages
+- Chainlit 2.x: adding elements to a streamed message via update() is silently dropped by
+  the frontend; send elements in a fresh cl.Message instead
+- Mermaid diagrams: rendered via mermaid.ink (mmdc/Puppeteer fails on ARM); use
+  cl.Image(content=bytes, size="large") sent as a separate message after the text response
 
 ## Constraints
 - Chainlit 2.x is installed — use v2 API only, not v1 patterns
@@ -65,10 +69,8 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Tools return structured data (dicts/JSON), never raw strings
 
 ## Running the app
-source .venv/bin/activate
-python start.py               # syncs branding.yaml → config.toml, then starts Chainlit
-# or with explicit args:
-python start.py --host 0.0.0.0 --port 8000
+./ctl.sh start|stop|restart|status|logs   # always use ctl.sh — handles PID, child cleanup, nohup
+# start.py syncs branding.yaml → config.toml before launching Chainlit on 0.0.0.0:8000
 
 ## Switching models
 Edit config/models.yaml — change the 'active' field, restart chainlit
