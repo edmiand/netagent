@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import re
 import uuid
@@ -9,7 +10,7 @@ import chainlit as cl
 from langchain_core.messages import HumanMessage
 
 from agent.llm import get_active_model_name
-from agent.mcp_bridge import get_mcp_tools
+from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -114,38 +115,51 @@ async def on_message(message: cl.Message):
     await _run_agent(message.content)
 
 
+async def _fetch_mermaid_image(client: httpx.AsyncClient, i: int, match: re.Match) -> tuple[cl.Image | None, re.Match]:
+    mermaid_text = match.group(1).strip()
+    encoded = base64.urlsafe_b64encode(mermaid_text.encode()).decode()
+    try:
+        resp = await client.get(f"https://mermaid.ink/img/{encoded}")
+        if resp.status_code == 200:
+            return cl.Image(content=resp.content, name=f"call_flow_{i}", display="inline", size="large"), match
+    except Exception:
+        pass
+    return None, match
+
+
 async def _render_mermaid_diagrams(content: str) -> tuple[list[cl.Image], str]:
-    """Fetch PNG renders of ```mermaid blocks from mermaid.ink.
+    """Fetch PNG renders of ```mermaid blocks from mermaid.ink concurrently.
 
     Returns (images, content_with_blocks_removed).
-    Images are bytes-backed cl.Image elements — no temp files.
     """
     matches = list(_MERMAID_RE.finditer(content))
     if not matches:
         return [], content
 
+    async with httpx.AsyncClient(timeout=15) as client:
+        results = await asyncio.gather(
+            *(_fetch_mermaid_image(client, i, m) for i, m in enumerate(matches))
+        )
+
     images: list[cl.Image] = []
     clean = content
-
-    async with httpx.AsyncClient(timeout=15) as client:
-        for i, match in enumerate(matches):
-            mermaid_text = match.group(1).strip()
-            encoded = base64.urlsafe_b64encode(mermaid_text.encode()).decode()
-            try:
-                resp = await client.get(f"https://mermaid.ink/img/{encoded}")
-                if resp.status_code == 200:
-                    images.append(
-                        cl.Image(content=resp.content, name=f"call_flow_{i}", display="inline", size="large")
-                    )
-                    clean = clean.replace(match.group(0), "")
-            except Exception:
-                pass  # leave raw mermaid block if fetch fails
+    for image, match in results:
+        if image is not None:
+            images.append(image)
+            clean = clean.replace(match.group(0), "")
 
     return images, clean.strip()
 
 
 async def _run_agent(user_input: str):
     agent = cl.user_session.get("agent")
+    if agent is None:
+        await cl.Message(
+            content="❌ **Agent not ready.** The session failed to initialise — please refresh the page.",
+            actions=_SCENARIO_ACTIONS,
+        ).send()
+        return
+
     thread_id = cl.user_session.get("thread_id")
 
     active_steps: dict[str, cl.Step] = {}
@@ -181,7 +195,7 @@ async def _run_agent(user_input: str):
                     output = str(event["data"].get("output", ""))
                     step.output = output[:600] + ("…" if len(output) > 600 else "")
                     await step.update()
-                tools_active -= 1
+                    tools_active -= 1
 
             elif kind == "on_chat_model_stream" and tools_active == 0:
                 chunk = event["data"]["chunk"]
@@ -198,11 +212,12 @@ async def _run_agent(user_input: str):
             step.output = f"❌ Error: {exc}"
             await step.update()
         root_cause = str(exc) or type(exc).__name__
-        if "ConnectError" in type(exc).__name__ or "Connect" in root_cause:
+        if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+            mcp_url = get_mcp_url()
             final_msg.content = (
                 f"❌ **Cannot reach the MCP server at VM1.**\n\n"
                 f"The 5G core agent connected to the LLM successfully, but the "
-                f"MCP tool server (`192.168.64.19:8080`) is not responding.\n\n"
+                f"MCP tool server (`{mcp_url}`) is not responding.\n\n"
                 f"**Fix:** SSH into VM1 and start the MCP server, then restart this chat."
             )
         else:

@@ -24,14 +24,14 @@ def sync_branding():
     content = config_path.read_text()
 
     content = re.sub(
-        r'^(name\s*=\s*)".+"',
-        f'\\1"{agent_name}"',
+        r'^(name\s*=\s*)".*"',
+        lambda m: f'{m.group(1)}"{agent_name}"',
         content,
         flags=re.MULTILINE,
     )
     content = re.sub(
-        r'^(default_avatar_file_url\s*=\s*)".+"',
-        f'\\1"/public/logos/{logo_file}"',
+        r'^(default_avatar_file_url\s*=\s*)".*"',
+        lambda m: f'{m.group(1)}"/public/logos/{logo_file}"',
         content,
         flags=re.MULTILINE,
     )

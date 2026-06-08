@@ -6,6 +6,13 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "mcp.yaml"
 
 
+def get_mcp_url() -> str:
+    with open(_CONFIG_PATH) as fh:
+        cfg = yaml.safe_load(fh)
+    first_server = next(iter(cfg["servers"].values()))
+    return first_server["url"]
+
+
 @asynccontextmanager
 async def get_mcp_tools():
     with open(_CONFIG_PATH) as fh:
@@ -17,7 +24,3 @@ async def get_mcp_tools():
     client = MultiServerMCPClient(servers)
     tools = await client.get_tools()
     yield tools
-
-
-def describe_tools(tools: list) -> str:
-    return "\n".join(f"  • {tool.name}: {tool.description}" for tool in tools)

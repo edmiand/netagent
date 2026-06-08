@@ -8,10 +8,14 @@ from langchain_core.messages import HumanMessage
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
 
 
-def get_llm() -> ChatOpenAI:
+def _load_config() -> dict:
     load_dotenv()
     with open(_CONFIG_PATH) as fh:
-        cfg = yaml.safe_load(fh)
+        return yaml.safe_load(fh)
+
+
+def get_llm() -> ChatOpenAI:
+    cfg = _load_config()
     active_name = cfg["active"]
     model_block = cfg["models"][active_name]
     api_key = os.environ.get(model_block["api_key_env"])
@@ -31,9 +35,7 @@ def get_llm() -> ChatOpenAI:
 
 
 def get_active_model_name() -> str:
-    with open(_CONFIG_PATH) as fh:
-        cfg = yaml.safe_load(fh)
-    return cfg["active"]
+    return _load_config()["active"]
 
 
 async def test_llm_connection() -> bool:
