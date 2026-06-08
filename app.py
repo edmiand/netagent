@@ -1,7 +1,5 @@
 import base64
 import re
-import shutil
-import tempfile
 import uuid
 import yaml
 from pathlib import Path
@@ -14,7 +12,8 @@ from agent.llm import get_active_model_name
 from agent.mcp_bridge import get_mcp_tools
 from agent.graph import create_agent
 
-_MERMAID_RE = re.compile(r"```mermaid\n(.*?)```", re.DOTALL)
+# Optional trailing horizontal whitespace between "mermaid" and the newline
+_MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
 
 _BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
 
@@ -115,43 +114,34 @@ async def on_message(message: cl.Message):
     await _run_agent(message.content)
 
 
-async def _render_mermaid_blocks(msg: cl.Message) -> list[str]:
-    """Fetch PNG renders of ```mermaid blocks from mermaid.ink and embed inline.
+async def _render_mermaid_diagrams(content: str) -> tuple[list[cl.Image], str]:
+    """Fetch PNG renders of ```mermaid blocks from mermaid.ink.
 
-    Returns a list of temp dirs to clean up after the message is sent.
+    Returns (images, content_with_blocks_removed).
+    Images are bytes-backed cl.Image elements — no temp files.
     """
-    matches = list(_MERMAID_RE.finditer(msg.content))
+    matches = list(_MERMAID_RE.finditer(content))
     if not matches:
-        return []
+        return [], content
 
-    tmp_dirs: list[str] = []
     images: list[cl.Image] = []
-    clean_content = msg.content
+    clean = content
 
     async with httpx.AsyncClient(timeout=15) as client:
         for i, match in enumerate(matches):
             mermaid_text = match.group(1).strip()
             encoded = base64.urlsafe_b64encode(mermaid_text.encode()).decode()
-            url = f"https://mermaid.ink/img/{encoded}"
-
-            tmp_dir = Path(tempfile.mkdtemp())
-            tmp_dirs.append(str(tmp_dir))
-            out = tmp_dir / "diagram.png"
-
             try:
-                resp = await client.get(url)
+                resp = await client.get(f"https://mermaid.ink/img/{encoded}")
                 if resp.status_code == 200:
-                    out.write_bytes(resp.content)
-                    images.append(cl.Image(path=str(out), name=f"call_flow_{i}", display="inline"))
-                    clean_content = clean_content.replace(match.group(0), "")
+                    images.append(
+                        cl.Image(content=resp.content, name=f"call_flow_{i}", display="inline", size="large")
+                    )
+                    clean = clean.replace(match.group(0), "")
             except Exception:
                 pass  # leave raw mermaid block if fetch fails
 
-    if images:
-        msg.content = clean_content.strip()
-        msg.elements = list(msg.elements or []) + images
-
-    return tmp_dirs
+    return images, clean.strip()
 
 
 async def _run_agent(user_input: str):
@@ -218,10 +208,13 @@ async def _run_agent(user_input: str):
         else:
             final_msg.content = f"❌ **Agent error:** {root_cause}"
 
-    tmp_dirs = await _render_mermaid_blocks(final_msg)
-    await final_msg.update()
-    for d in tmp_dirs:
-        shutil.rmtree(d, ignore_errors=True)
+    images, clean_content = await _render_mermaid_diagrams(final_msg.content)
+    if images:
+        final_msg.content = clean_content
+        await final_msg.update()
+        await cl.Message(content="", elements=images).send()
+    else:
+        await final_msg.update()
 
 
 @cl.on_chat_end
