@@ -159,11 +159,11 @@ python test_integration.py
 ### 9. Start the app
 
 ```bash
-./ctl.sh start          # start in background, logs → chainlit.log
-./ctl.sh status         # check it's running
-./ctl.sh logs           # tail -f the log
-./ctl.sh stop           # graceful stop + port release
-./ctl.sh restart        # stop then start
+./webui-ctl.sh start          # start in background, logs → chainlit.log
+./webui-ctl.sh status         # check it's running
+./webui-ctl.sh logs           # tail -f the log
+./webui-ctl.sh stop           # graceful stop + port release
+./webui-ctl.sh restart        # stop then start
 ```
 
 Open **http://\<VM2-IP\>:8000** in a browser.
@@ -211,7 +211,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env
 # Edit config/mcp.yaml → set VM1 address
-./ctl.sh start
+./webui-ctl.sh start
 ```
 
 ---
@@ -244,7 +244,7 @@ servers:
 ```
 app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
-ctl.sh                 # Process manager: start / stop / restart / status / logs
+webui-ctl.sh           # Process manager: start / stop / restart / status / logs
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml)
   mcp_bridge.py        # SSE client via MultiServerMCPClient
@@ -306,7 +306,7 @@ active: gpt-oss:20b-cloud   # or gemma4:31b-cloud
 # No ollama pull needed — these models run in the cloud
 
 # Restart the app
-./ctl.sh restart
+./webui-ctl.sh restart
 ```
 
 ---

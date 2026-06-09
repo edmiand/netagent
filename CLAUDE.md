@@ -71,7 +71,7 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Tools return structured data (dicts/JSON), never raw strings
 
 ## Running the app
-./ctl.sh start|stop|restart|status|logs   # always use ctl.sh — handles PID, child cleanup, nohup
+./webui-ctl.sh start|stop|restart|status|logs   # always use webui-ctl.sh — handles PID, child cleanup, nohup
 # start.py syncs config/branding.yaml → .chainlit/config.toml before launching Chainlit on 0.0.0.0:8000
 
 ## Demo scenarios (3 action buttons on every message)
