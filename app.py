@@ -10,9 +10,12 @@ import chainlit as cl
 from chainlit.data import get_data_layer
 from langchain_core.messages import HumanMessage
 
+from chainlit.input_widget import Switch
+
 from agent.llm import get_active_model_name
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
+from agent.approval import wrap_with_approval
 from data_layer import make_data_layer
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -100,8 +103,11 @@ async def on_chat_resume(thread):
 @cl.on_chat_start
 async def on_chat_start():
     mcp_ctx = get_mcp_tools()
-    tools = await mcp_ctx.__aenter__()
+    raw_tools = await mcp_ctx.__aenter__()
     cl.user_session.set("mcp_ctx", mcp_ctx)
+
+    tools = wrap_with_approval(raw_tools)
+    cl.user_session.set("human_approval_enabled", False)
 
     agent = create_agent(tools)
     cl.user_session.set("agent", agent)
@@ -110,7 +116,7 @@ async def on_chat_start():
     branding = _load_branding()
     model_name = get_active_model_name()
     tool_names = "  ".join(
-        f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in tools
+        f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in raw_tools
     )
     await _send(cl.Message(
         content=(
@@ -120,6 +126,17 @@ async def on_chat_start():
         ),
         actions=_SCENARIO_ACTIONS,
     ))
+
+    await cl.ChatSettings(
+        [
+            Switch(
+                id="human_approval_enabled",
+                label="Human Approval Mode",
+                description="Require your approval before each tool executes",
+                initial=False,
+            )
+        ]
+    ).send()
 
 
 @cl.action_callback("health_snapshot")
@@ -138,6 +155,14 @@ async def on_watch_attach(action: cl.Action):
 async def on_debug_failure(action: cl.Action):
     if not cl.user_session.get("read_only"):
         await _run_agent(action.payload["prompt"])
+
+
+@cl.on_settings_update
+async def on_settings_update(settings: dict):
+    enabled = settings.get("human_approval_enabled", False)
+    cl.user_session.set("human_approval_enabled", enabled)
+    status = "enabled" if enabled else "disabled"
+    await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
 
 @cl.on_message
