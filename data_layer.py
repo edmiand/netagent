@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS steps (
     "end"           TEXT,
     "generation"    TEXT,
     "showInput"     TEXT,
-    "language"      TEXT
+    "language"      TEXT,
+    "defaultOpen"   INTEGER,
+    "autoCollapse"  INTEGER
 );
 CREATE TABLE IF NOT EXISTS feedbacks (
     "id"      TEXT PRIMARY KEY,
@@ -66,10 +68,21 @@ CREATE TABLE IF NOT EXISTS elements (
 """
 
 
+_MIGRATIONS = [
+    'ALTER TABLE steps ADD COLUMN "defaultOpen" INTEGER',
+    'ALTER TABLE steps ADD COLUMN "autoCollapse" INTEGER',
+]
+
+
 def init_database() -> None:
     import sqlite3
     conn = sqlite3.connect(str(DB_PATH))
     conn.executescript(_SCHEMA_SQL)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(steps)")}
+    for migration in _MIGRATIONS:
+        col = migration.split('"')[1]
+        if col not in existing_cols:
+            conn.execute(migration)
     conn.commit()
     conn.close()
 
