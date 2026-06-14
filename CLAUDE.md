@@ -1,4 +1,4 @@
-# 5G Demo App — Claude Code Context
+# NetAgent — Claude Code Context
 
 ## What this project is
 A Chainlit web application that acts as an agentic AI assistant for managing

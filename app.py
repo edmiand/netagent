@@ -265,11 +265,15 @@ async def _run_agent(user_input: str):
                             await final_msg.stream_token(part["text"])
 
     except Exception as exc:
+        # Unwrap Python 3.11+ ExceptionGroup (raised by asyncio.TaskGroup internals)
+        inner = exc
+        if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+            inner = exc.exceptions[0]
         for step in active_steps.values():
-            step.output = f"❌ Error: {exc}"
+            step.output = f"❌ Error: {inner}"
             await step.update()
-        root_cause = str(exc) or type(exc).__name__
-        if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        root_cause = str(inner) or type(inner).__name__
+        if isinstance(inner, (httpx.ConnectError, httpx.ConnectTimeout)):
             mcp_url = get_mcp_url()
             final_msg.content = (
                 f"❌ **Cannot reach the MCP server at VM1.**\n\n"

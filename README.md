@@ -113,8 +113,8 @@ sudo ufw status
 
 ```bash
 # Clone
-git clone git@github.com:edmiand/5g-demo-app.git
-cd 5g-demo-app
+git clone git@github.com:edmiand/netagent.git
+cd netagent
 
 # Create and activate virtualenv (adjust python3.11 → python3 on Ubuntu 24.04)
 python3.11 -m venv .venv
@@ -172,7 +172,7 @@ Open **http://\<VM2-IP\>:8000** in a browser.
 
 ## Run as a systemd service (persistent)
 
-Create `/etc/systemd/system/5g-demo-app.service` — adjust `User`, `WorkingDirectory`,
+Create `/etc/systemd/system/netagent.service` — adjust `User`, `WorkingDirectory`,
 and the Python path to match your setup:
 
 ```ini
@@ -183,8 +183,8 @@ After=network.target ollama.service
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/5g-demo-app
-ExecStart=/home/ubuntu/5g-demo-app/.venv/bin/python start.py --host 0.0.0.0 --port 8000
+WorkingDirectory=/home/ubuntu/netagent
+ExecStart=/home/ubuntu/netagent/.venv/bin/python start.py --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=5
 
@@ -194,8 +194,8 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now 5g-demo-app
-sudo systemctl status 5g-demo-app
+sudo systemctl enable --now netagent
+sudo systemctl status netagent
 ```
 
 ---
@@ -205,8 +205,8 @@ sudo systemctl status 5g-demo-app
 If the VM already has Python 3.11+, Ollama, and a model pulled:
 
 ```bash
-git clone git@github.com:edmiand/5g-demo-app.git
-cd 5g-demo-app
+git clone git@github.com:edmiand/netagent.git
+cd netagent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env
