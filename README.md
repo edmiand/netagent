@@ -124,9 +124,9 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -e .
 
-# Copy environment file
+# Copy environment file and generate a JWT secret (required by Chainlit auth)
 cp .env.example .env
-# .env is pre-configured for Ollama — no edits needed unless customising
+echo "CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
 ```
 
 ### 6. Point the app at your VM1
@@ -210,6 +210,7 @@ cd netagent
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e .
 cp .env.example .env
+echo "CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
 # Edit config/mcp.yaml → set VM1 address
 ./webui-ctl.sh start
 ```
