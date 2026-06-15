@@ -23,6 +23,10 @@ _MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
 
 _BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
 
+# Chainlit persists generated files (e.g. mermaid images) under .files/<session-id>/
+# and uses mkdir(exist_ok=True) without parents=True, so the parent must pre-exist.
+(Path(__file__).parent / ".files").mkdir(exist_ok=True)
+
 
 async def _send(msg: cl.Message) -> cl.Message:
     """Send a message as a root-level step so it appears in thread history."""
@@ -273,6 +277,12 @@ async def _run_agent(user_input: str):
             step.output = f"❌ Error: {inner}"
             await step.update()
         root_cause = str(inner) or type(inner).__name__
+
+        # A failed tool call leaves a dangling AIMessage with tool_calls but no
+        # ToolMessage in the MemorySaver checkpointer. Reset the thread so the
+        # next user message starts clean rather than hitting INVALID_CHAT_HISTORY.
+        cl.user_session.set("thread_id", str(uuid.uuid4()))
+
         if isinstance(inner, (httpx.ConnectError, httpx.ConnectTimeout)):
             mcp_url = get_mcp_url()
             final_msg.content = (
