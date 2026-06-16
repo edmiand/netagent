@@ -24,7 +24,7 @@ async def test_mcp_tools_load() -> bool:
     required = {
         "nf_lifecycle",
         "system_health_snapshot",
-        "subscriber_crud",
+        "subscriber",
         "list_ue_sessions",
         "tail_nf_logs",
     }
@@ -55,7 +55,8 @@ async def test_agent_round_trip() -> bool:
         async with get_mcp_tools() as tools:
             agent = create_agent(tools)
             result = await agent.ainvoke(
-                {"messages": [HumanMessage(content="What NFs are currently running? One sentence only.")]}
+                {"messages": [HumanMessage(content="What NFs are currently running? One sentence only.")]},
+                config={"configurable": {"thread_id": "integration-test"}},
             )
             messages = result.get("messages", [])
             response = ""

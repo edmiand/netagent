@@ -7,9 +7,9 @@ chain MCP tool calls, diagnose network issues, and take remediation actions.
 All tool calls stream visibly as Steps in the Chainlit UI.
 
 ## Architecture
-- VM1: Open5GS 5G core + MCP SSE server at :8080/sse (IP set in config/mcp.yaml)
+- VM1: Open5GS 5G core + MCP streamable HTTP server at :8080/mcp (IP set in config/mcp.yaml)
 - VM2 (this machine): Chainlit app + LangGraph + Ollama
-- MCP connection: HTTP SSE — no local MCP process, just a URL
+- MCP connection: streamable HTTP — no local MCP process, just a URL
 - LLM: Ollama at http://localhost:11434/v1 (active model set in config/models.yaml)
 
 ## Key paths
@@ -29,8 +29,13 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 ## MCP tools available on VM1
 - nf_lifecycle          start/stop/restart/status any Open5GS NF
 - system_health_snapshot one-shot health check of all NFs
-- subscriber_crud        CRUD on subscriber profiles in MongoDB (supports filter param)
+- nf_resource_usage      CPU/memory usage per NF process
+- subscriber             CRUD on subscriber profiles in MongoDB (supports filter param)
+- subscriber_update_profile update a subscriber's profile fields
+- subscriber_update_slices  update a subscriber's network slice assignments
 - list_ue_sessions       list active UE registrations and PDU sessions
+- get_ue_trace           call-flow trace for a UE session (render as Mermaid sequence diagram)
+- amf_ran_query          query AMF for connected RAN/gNB info
 - tail_nf_logs           filtered log reads from NF log files
 - read_nf_config         read parsed YAML config for any NF
   - read_nf_config("amf")                    → full config (keys: logger, global, amf)
