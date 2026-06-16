@@ -1,6 +1,6 @@
 # Branding configuration — edit here, changes apply on next start
 # Place logo files in public/logos/
 
-agent_name: "NetAgent"
-welcome_title: "NetAgent is ready"
+agent_name: "Network Agent"
+welcome_title: "Network Agent is ready"
 logo_file: ""
