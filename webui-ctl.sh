@@ -35,26 +35,25 @@ start() {
 }
 
 stop() {
-    if ! _running; then
-        echo "Not running"
-        rm -f "$PID_FILE"
-        return
-    fi
     local pid; pid=$(_pid)
-    pkill -P "$pid" 2>/dev/null
-    kill "$pid" 2>/dev/null
-    local i
-    for i in {1..10}; do
-        sleep 0.5
-        kill -0 "$pid" 2>/dev/null || break
-    done
-    if kill -0 "$pid" 2>/dev/null; then
-        pkill -9 -P "$pid" 2>/dev/null
-        kill -9 "$pid" 2>/dev/null
+    if [[ -n "$pid" ]]; then
+        pkill -P "$pid" 2>/dev/null
+        kill "$pid" 2>/dev/null
+        local i
+        for i in {1..10}; do
+            sleep 0.5
+            kill -0 "$pid" 2>/dev/null || break
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            pkill -9 -P "$pid" 2>/dev/null
+            kill -9 "$pid" 2>/dev/null
+        fi
     fi
+    # Always evict anything holding port 8000 — catches orphaned processes
+    # whose PID is no longer in the PID file.
     fuser -k 8000/tcp 2>/dev/null || true
     rm -f "$PID_FILE"
-    echo "Stopped (PID $pid)"
+    echo "Stopped${pid:+ (PID $pid)}"
 }
 
 case "${1:-help}" in

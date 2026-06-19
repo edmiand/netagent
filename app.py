@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import re
 import uuid
 import yaml
@@ -58,23 +59,94 @@ TOOL_ICONS = {
     "trace": "🔍",
 }
 
-_SCENARIO_ACTIONS = [
-    cl.Action(
-        name="health_snapshot",
-        label="🏥 Health Snapshot",
-        payload={"prompt": "Call system_health_snapshot now."},
-    ),
-    cl.Action(
-        name="watch_attach",
-        label="👀 Watch Subscriber Attach",
-        payload={"prompt": "Call list_ue_sessions now."},
-    ),
-    cl.Action(
-        name="debug_failure",
-        label="🔍 Debug Attach Failure",
-        payload={"prompt": "A subscriber cannot attach to the 5G core. Investigate the root cause: check NF health, tail logs for any degraded or down functions, read their config if the logs are ambiguous, then tell me exactly what is wrong and what to do to fix it."},
-    ),
-]
+
+def _unwrap_mcp_output(output_raw) -> str:
+    """Extract the plain inner text from an MCP tool output.
+
+    In langgraph 1.2.x, event["data"]["output"] arrives as a raw string:
+      '[[{"type": "text", "text": "{...actual payload...}"}]]'
+
+    Navigate: outer JSON string → list-of-lists → content blocks → inner text.
+    Works whether the value is a string, a ToolMessage, or already a list.
+    """
+    # Unwrap ToolMessage if present
+    content = getattr(output_raw, "content", output_raw)
+
+    # Parse the outer layer if it's a JSON string
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            return content  # already plain text, return as-is
+
+    # Flatten one level: [[block, ...]] → [block, ...]
+    if isinstance(content, list):
+        blocks: list = []
+        for item in content:
+            if isinstance(item, list):
+                blocks.extend(item)
+            elif isinstance(item, dict):
+                blocks.append(item)
+        texts = [b["text"] for b in blocks
+                 if isinstance(b, dict) and b.get("type") == "text" and "text" in b]
+        return "\n".join(texts) if texts else str(content)
+
+    return str(content)
+
+
+def _tool_summary(tool_name: str, output_raw) -> str:
+    """Return a one-line human-readable summary from a tool result."""
+    icon = TOOL_ICONS.get(tool_name, "🔧")
+    text = _unwrap_mcp_output(output_raw)
+
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        data = None
+
+    # Prefer the "summary" field — all network tools already provide one.
+    if isinstance(data, dict) and data.get("summary"):
+        return f"{icon} {data['summary']}"
+
+    # Tool-specific fallbacks for tools without a summary field
+    if tool_name == "list_ue_sessions" and isinstance(data, dict):
+        sessions = data.get("sessions") or data.get("ue_sessions") or []
+        count = len(sessions) if isinstance(sessions, list) else "?"
+        return f"{icon} {count} active UE session(s)."
+
+    if tool_name == "tail_nf_logs" and isinstance(data, dict):
+        lines = data.get("lines") or data.get("log_lines") or []
+        nf = data.get("nf") or tool_name
+        count = len(lines) if isinstance(lines, list) else "?"
+        return f"{icon} {nf}: {count} log line(s) returned."
+
+    if tool_name == "subscriber" and isinstance(data, (dict, list)):
+        count = len(data) if isinstance(data, list) else 1
+        return f"{icon} {count} subscriber record(s)."
+
+    # Generic fallback: first 140 chars of clean text
+    preview = text.replace("\n", " ").strip()
+    return f"{icon} {preview[:140]}{'…' if len(preview) > 140 else ''}"
+
+def _make_scenario_actions() -> list[cl.Action]:
+    """Return fresh Action instances each call so forId is always None on first use."""
+    return [
+        cl.Action(
+            name="health_snapshot",
+            label="🏥 Health Snapshot",
+            payload={"prompt": "Call system_health_snapshot now."},
+        ),
+        cl.Action(
+            name="watch_attach",
+            label="👀 Watch Subscriber Attach",
+            payload={"prompt": "Call list_ue_sessions now."},
+        ),
+        cl.Action(
+            name="debug_failure",
+            label="🔍 Debug Attach Failure",
+            payload={"prompt": "A subscriber cannot attach to the 5G core. Investigate the root cause: check NF health, tail logs for any degraded or down functions, read their config if the logs are ambiguous, then tell me exactly what is wrong and what to do to fix it."},
+        ),
+    ]
 
 
 @cl.set_starters
@@ -128,7 +200,7 @@ async def on_chat_start():
             f"Model: `{model_name}`\n\n"
             f"**Tools:** {tool_names}"
         ),
-        actions=_SCENARIO_ACTIONS,
+        actions=_make_scenario_actions(),
     ))
 
     await cl.ChatSettings(
@@ -217,7 +289,7 @@ async def _run_agent(user_input: str):
     if agent is None:
         await _send(cl.Message(
             content="❌ **Agent not ready.** The session failed to initialise — please refresh the page.",
-            actions=_SCENARIO_ACTIONS,
+            actions=_make_scenario_actions(),
         ))
         return
 
@@ -225,8 +297,8 @@ async def _run_agent(user_input: str):
 
     active_steps: dict[str, cl.Step] = {}
     tools_active = 0
-    final_msg = cl.Message(content="", actions=_SCENARIO_ACTIONS)
-    await _send(final_msg)
+    # Created lazily on the first streamed token — never pre-sent as empty
+    current_msg: cl.Message | None = None
 
     try:
         async for event in agent.astream_events(
@@ -240,33 +312,51 @@ async def _run_agent(user_input: str):
             if kind == "on_tool_start":
                 tool_name = event["name"]
                 icon = TOOL_ICONS.get(tool_name, "🔧")
+
+                # Discard any pre-tool text fragments the model leaked
+                if current_msg is not None:
+                    await current_msg.remove()
+                    current_msg = None
+
                 step = cl.Step(name=f"{icon} {tool_name}", type="tool")
                 step.input = str(event["data"].get("input", ""))
-                await step.send()
+                await step.__aenter__()
                 active_steps[run_id] = step
                 tools_active += 1
-                # Discard any pre-tool text the model leaked (tool-call reasoning)
-                if final_msg.content:
-                    final_msg.content = ""
-                    await final_msg.update()
 
             elif kind == "on_tool_end":
                 step = active_steps.pop(run_id, None)
                 if step:
-                    output = str(event["data"].get("output", ""))
-                    step.output = output[:600] + ("…" if len(output) > 600 else "")
-                    await step.update()
+                    output_raw = event["data"].get("output", "")
+                    output_str = _unwrap_mcp_output(output_raw)
+                    step.output = output_str[:300] + ("…" if len(output_str) > 300 else "")
+                    await step.__aexit__(None, None, None)
                     tools_active -= 1
+
+                    # Emit a brief programmatic status bubble so the user always
+                    # sees what each tool found without needing to expand the step.
+                    tool_name = step.name.split(" ", 1)[-1]  # strip icon prefix
+                    summary = _tool_summary(tool_name, output_raw)
+                    if current_msg is not None:
+                        await current_msg.update()
+                        current_msg = None
+                    await _send(cl.Message(content=summary))
 
             elif kind == "on_chat_model_stream" and tools_active == 0:
                 chunk = event["data"]["chunk"]
                 content = getattr(chunk, "content", "")
+                tokens: list[str] = []
                 if isinstance(content, str) and content:
-                    await final_msg.stream_token(content)
+                    tokens = [content]
                 elif isinstance(content, list):
-                    for part in content:
-                        if isinstance(part, dict) and part.get("type") == "text":
-                            await final_msg.stream_token(part["text"])
+                    tokens = [p["text"] for p in content
+                               if isinstance(p, dict) and p.get("type") == "text"]
+
+                for token in tokens:
+                    if current_msg is None:
+                        current_msg = cl.Message(content="")
+                        await _send(current_msg)
+                    await current_msg.stream_token(token)
 
     except Exception as exc:
         # Unwrap Python 3.11+ ExceptionGroup (raised by asyncio.TaskGroup internals)
@@ -274,8 +364,9 @@ async def _run_agent(user_input: str):
         if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
             inner = exc.exceptions[0]
         for step in active_steps.values():
+            step.is_error = True
             step.output = f"❌ Error: {inner}"
-            await step.update()
+            await step.__aexit__(None, None, None)
         root_cause = str(inner) or type(inner).__name__
 
         # A failed tool call leaves a dangling AIMessage with tool_calls but no
@@ -283,26 +374,38 @@ async def _run_agent(user_input: str):
         # next user message starts clean rather than hitting INVALID_CHAT_HISTORY.
         cl.user_session.set("thread_id", str(uuid.uuid4()))
 
+        if current_msg is None:
+            current_msg = cl.Message(content="")
+            await _send(current_msg)
+
         if isinstance(inner, (httpx.ConnectError, httpx.ConnectTimeout)):
             mcp_url = get_mcp_url()
-            final_msg.content = (
+            current_msg.content = (
                 f"❌ **Cannot reach the MCP server at VM1.**\n\n"
                 f"The 5G core agent connected to the LLM successfully, but the "
                 f"MCP tool server (`{mcp_url}`) is not responding.\n\n"
                 f"**Fix:** SSH into VM1 and start the MCP server, then restart this chat."
             )
         else:
-            final_msg.content = f"❌ **Agent error:** {root_cause}"
+            current_msg.content = f"❌ **Agent error:** {root_cause}"
 
-    images, clean_content = await _render_mermaid_diagrams(final_msg.content)
+    # Ensure there is always a message to carry the final action buttons
+    if current_msg is None:
+        current_msg = cl.Message(content="")
+        await _send(current_msg)
+
+    # Attach fresh action buttons (new instances so forId is None and update() sends them)
+    current_msg.actions = _make_scenario_actions()
+
+    images, clean_content = await _render_mermaid_diagrams(current_msg.content)
     if images:
-        final_msg.content = clean_content
-        await final_msg.update()
+        current_msg.content = clean_content
+        await current_msg.update()
         await _send(cl.Message(content="", elements=images))
     else:
-        await final_msg.update()
+        await current_msg.update()
 
-    if not cl.user_session.get("thread_named") and final_msg.content and not final_msg.content.startswith("❌"):
+    if not cl.user_session.get("thread_named") and current_msg.content and not current_msg.content.startswith("❌"):
         name = user_input[:60].rstrip()
         data_layer = get_data_layer()
         if data_layer:
