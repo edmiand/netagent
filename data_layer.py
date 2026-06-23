@@ -104,7 +104,9 @@ class _LocalStorageClient(BaseStorageClient):
         overwrite: bool = True,
         content_disposition: str | None = None,
     ) -> Dict[str, Any]:
-        dest = self._base / object_key
+        dest = (self._base / object_key).resolve()
+        if not dest.is_relative_to(self._base.resolve()):
+            raise ValueError(f"Invalid object_key: {object_key!r}")
         dest.parent.mkdir(parents=True, exist_ok=True)
         mode = "wb" if isinstance(data, bytes) else "w"
         with open(dest, mode) as f:

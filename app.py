@@ -208,6 +208,17 @@ async def on_debug_failure(action: cl.Action):
         await _run_agent(action.payload["prompt"])
 
 
+def _rebuild_agent(thinking: bool) -> bool:
+    """Rebuild the agent with the given thinking mode. Returns False if session not ready."""
+    raw_tools = cl.user_session.get("raw_tools")
+    if not raw_tools:
+        return False
+    tools = wrap_with_approval(raw_tools)
+    cl.user_session.set("agent", create_agent(tools, thinking=thinking))
+    cl.user_session.set("show_thinking", thinking)
+    return True
+
+
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
     enabled = settings.get("human_approval_enabled", False)
@@ -216,16 +227,10 @@ async def on_settings_update(settings: dict):
     await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
     show_thinking = settings.get("show_thinking", False)
-    prev_thinking = cl.user_session.get("show_thinking", False)
-    if show_thinking != prev_thinking:
-        cl.user_session.set("show_thinking", show_thinking)
-        raw_tools = cl.user_session.get("raw_tools", [])
-        tools = wrap_with_approval(raw_tools)
-        new_agent = create_agent(tools, thinking=show_thinking)
-        cl.user_session.set("agent", new_agent)
-        cl.user_session.set("thread_id", str(uuid.uuid4()))
-        status_t = "enabled" if show_thinking else "disabled"
-        await cl.Message(content=f"💭 Model thinking **{status_t}**. Conversation reset.").send()
+    if show_thinking != cl.user_session.get("show_thinking", False):
+        if _rebuild_agent(show_thinking):
+            status_t = "enabled" if show_thinking else "disabled"
+            await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
 
 
 @cl.on_message
@@ -293,13 +298,12 @@ async def _run_agent(user_input: str):
     if not show_thinking:
         thinking_step = cl.Step(name="Thinking…", type="tool")
         await thinking_step.__aenter__()
-    thinking_dismissed = False
 
     async def dismiss_thinking() -> None:
-        nonlocal thinking_dismissed
-        if not thinking_dismissed and thinking_step is not None:
-            thinking_dismissed = True
+        nonlocal thinking_step
+        if thinking_step is not None:
             await thinking_step.__aexit__(None, None, None)
+            thinking_step = None
 
     try:
         async for event in agent.astream_events(

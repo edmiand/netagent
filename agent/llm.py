@@ -1,3 +1,4 @@
+import functools
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,6 +8,7 @@ from langchain_core.messages import HumanMessage
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
 
 
+@functools.lru_cache(maxsize=1)
 def _load_config() -> dict:
     load_dotenv()
     with open(_CONFIG_PATH) as fh:
