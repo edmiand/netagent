@@ -1,6 +1,8 @@
 from pathlib import Path
+from typing import Any, Dict, Union
 
 from chainlit.data.sql_alchemy import SQLAlchemyDataLayer
+from chainlit.data.storage_clients.base import BaseStorageClient
 
 DB_PATH = Path(__file__).parent / "chat_history.db"
 DB_URL = f"sqlite+aiosqlite:///{DB_PATH}"
@@ -87,5 +89,44 @@ def init_database() -> None:
     conn.close()
 
 
+class _LocalStorageClient(BaseStorageClient):
+    """Stores element files on the local filesystem under .files/."""
+
+    def __init__(self, base_dir: Path) -> None:
+        self._base = base_dir
+        self._base.mkdir(exist_ok=True)
+
+    async def upload_file(
+        self,
+        object_key: str,
+        data: Union[bytes, str],
+        mime: str = "application/octet-stream",
+        overwrite: bool = True,
+        content_disposition: str | None = None,
+    ) -> Dict[str, Any]:
+        dest = self._base / object_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        mode = "wb" if isinstance(data, bytes) else "w"
+        with open(dest, mode) as f:
+            f.write(data)
+        return {"object_key": object_key, "url": f"/public/.files/{object_key}"}
+
+    async def delete_file(self, object_key: str) -> bool:
+        target = self._base / object_key
+        if target.exists():
+            target.unlink()
+            return True
+        return False
+
+    async def get_read_url(self, object_key: str) -> str:
+        return f"/public/.files/{object_key}"
+
+    async def close(self) -> None:
+        pass
+
+
+_FILES_DIR = Path(__file__).parent / ".files"
+
+
 def make_data_layer() -> SQLAlchemyDataLayer:
-    return SQLAlchemyDataLayer(conninfo=DB_URL)
+    return SQLAlchemyDataLayer(conninfo=DB_URL, storage_provider=_LocalStorageClient(_FILES_DIR))

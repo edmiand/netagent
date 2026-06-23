@@ -2,22 +2,20 @@ active: gemma4:31b-cloud
 
 models:
   gpt-oss:20b-cloud:
-    base_url: http://localhost:11434/v1
-    api_key_env: OLLAMA_API_KEY
+    base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
     description: "Cloud OSS model via local Ollama"
 
   gemma4:31b-cloud:
-    base_url: http://localhost:11434/v1
-    api_key_env: OLLAMA_API_KEY
+    base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
+    thinking: true
     description: "Cloud Google model via local Ollama"
 
   qwen2.5:7b:
-    base_url: http://localhost:11434/v1
-    api_key_env: OLLAMA_API_KEY
+    base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
     description: "Lighter local option — needs ~5GB RAM"

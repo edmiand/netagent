@@ -1,8 +1,7 @@
-import os
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
@@ -14,28 +13,28 @@ def _load_config() -> dict:
         return yaml.safe_load(fh)
 
 
-def get_llm() -> ChatOpenAI:
+def get_llm(thinking: bool = False) -> ChatOllama:
     cfg = _load_config()
     active_name = cfg["active"]
     model_block = cfg["models"][active_name]
-    api_key = os.environ.get(model_block["api_key_env"])
-    if not api_key:
-        raise ValueError(
-            f"Environment variable '{model_block['api_key_env']}' is not set. "
-            f"Add it to .env or export it before starting the app."
-        )
-    return ChatOpenAI(
-        base_url=model_block["base_url"],
-        api_key=api_key,
+    kwargs: dict = dict(
         model=active_name,
+        base_url=model_block["base_url"],
         temperature=model_block["temperature"],
-        max_tokens=model_block["max_tokens"],
-        streaming=True,
+        num_predict=model_block["max_tokens"],
     )
+    if thinking and model_block.get("thinking"):
+        kwargs["reasoning"] = True
+    return ChatOllama(**kwargs)
 
 
 def get_active_model_name() -> str:
     return _load_config()["active"]
+
+
+def model_supports_thinking() -> bool:
+    cfg = _load_config()
+    return bool(cfg["models"][cfg["active"]].get("thinking", False))
 
 
 async def test_llm_connection() -> bool:

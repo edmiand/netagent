@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage
 
 from chainlit.input_widget import Switch
 
-from agent.llm import get_active_model_name
+from agent.llm import get_active_model_name, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
@@ -94,39 +94,6 @@ def _unwrap_mcp_output(output_raw) -> str:
     return str(content)
 
 
-def _tool_summary(tool_name: str, output_raw) -> str:
-    """Return a one-line human-readable summary from a tool result."""
-    icon = TOOL_ICONS.get(tool_name, "🔧")
-    text = _unwrap_mcp_output(output_raw)
-
-    try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        data = None
-
-    # Prefer the "summary" field — all network tools already provide one.
-    if isinstance(data, dict) and data.get("summary"):
-        return f"{icon} {data['summary']}"
-
-    # Tool-specific fallbacks for tools without a summary field
-    if tool_name == "list_ue_sessions" and isinstance(data, dict):
-        sessions = data.get("sessions") or data.get("ue_sessions") or []
-        count = len(sessions) if isinstance(sessions, list) else "?"
-        return f"{icon} {count} active UE session(s)."
-
-    if tool_name == "tail_nf_logs" and isinstance(data, dict):
-        lines = data.get("lines") or data.get("log_lines") or []
-        nf = data.get("nf") or tool_name
-        count = len(lines) if isinstance(lines, list) else "?"
-        return f"{icon} {nf}: {count} log line(s) returned."
-
-    if tool_name == "subscriber" and isinstance(data, (dict, list)):
-        count = len(data) if isinstance(data, list) else 1
-        return f"{icon} {count} subscriber record(s)."
-
-    # Generic fallback: first 140 chars of clean text
-    preview = text.replace("\n", " ").strip()
-    return f"{icon} {preview[:140]}{'…' if len(preview) > 140 else ''}"
 
 def _make_scenario_actions() -> list[cl.Action]:
     """Return fresh Action instances each call so forId is always None on first use."""
@@ -181,11 +148,13 @@ async def on_chat_start():
     mcp_ctx = get_mcp_tools()
     raw_tools = await mcp_ctx.__aenter__()
     cl.user_session.set("mcp_ctx", mcp_ctx)
+    cl.user_session.set("raw_tools", raw_tools)
 
     tools = wrap_with_approval(raw_tools)
     cl.user_session.set("human_approval_enabled", False)
+    cl.user_session.set("show_thinking", False)
 
-    agent = create_agent(tools)
+    agent = create_agent(tools, thinking=False)
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
 
@@ -203,16 +172,22 @@ async def on_chat_start():
         actions=_make_scenario_actions(),
     ))
 
-    await cl.ChatSettings(
-        [
-            Switch(
-                id="human_approval_enabled",
-                label="Human Approval Mode",
-                description="Require your approval before each tool executes",
-                initial=False,
-            )
-        ]
-    ).send()
+    widgets = [
+        Switch(
+            id="human_approval_enabled",
+            label="Human Approval Mode",
+            description="Require your approval before each tool executes",
+            initial=False,
+        )
+    ]
+    if model_supports_thinking():
+        widgets.append(Switch(
+            id="show_thinking",
+            label="Show Model Thinking",
+            description="Stream the model's internal reasoning before each response",
+            initial=False,
+        ))
+    await cl.ChatSettings(widgets).send()
 
 
 @cl.action_callback("health_snapshot")
@@ -239,6 +214,18 @@ async def on_settings_update(settings: dict):
     cl.user_session.set("human_approval_enabled", enabled)
     status = "enabled" if enabled else "disabled"
     await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
+
+    show_thinking = settings.get("show_thinking", False)
+    prev_thinking = cl.user_session.get("show_thinking", False)
+    if show_thinking != prev_thinking:
+        cl.user_session.set("show_thinking", show_thinking)
+        raw_tools = cl.user_session.get("raw_tools", [])
+        tools = wrap_with_approval(raw_tools)
+        new_agent = create_agent(tools, thinking=show_thinking)
+        cl.user_session.set("agent", new_agent)
+        cl.user_session.set("thread_id", str(uuid.uuid4()))
+        status_t = "enabled" if show_thinking else "disabled"
+        await cl.Message(content=f"💭 Model thinking **{status_t}**. Conversation reset.").send()
 
 
 @cl.on_message
@@ -299,6 +286,20 @@ async def _run_agent(user_input: str):
     tools_active = 0
     # Created lazily on the first streamed token — never pre-sent as empty
     current_msg: cl.Message | None = None
+    show_thinking: bool = cl.user_session.get("show_thinking", False)
+    reasoning_step: cl.Step | None = None
+
+    thinking_step: cl.Step | None = None
+    if not show_thinking:
+        thinking_step = cl.Step(name="Thinking…", type="tool")
+        await thinking_step.__aenter__()
+    thinking_dismissed = False
+
+    async def dismiss_thinking() -> None:
+        nonlocal thinking_dismissed
+        if not thinking_dismissed and thinking_step is not None:
+            thinking_dismissed = True
+            await thinking_step.__aexit__(None, None, None)
 
     try:
         async for event in agent.astream_events(
@@ -310,6 +311,7 @@ async def _run_agent(user_input: str):
             run_id = event.get("run_id", "")
 
             if kind == "on_tool_start":
+                await dismiss_thinking()
                 tool_name = event["name"]
                 icon = TOOL_ICONS.get(tool_name, "🔧")
 
@@ -333,26 +335,42 @@ async def _run_agent(user_input: str):
                     await step.__aexit__(None, None, None)
                     tools_active -= 1
 
-                    # Emit a brief programmatic status bubble so the user always
-                    # sees what each tool found without needing to expand the step.
-                    tool_name = step.name.split(" ", 1)[-1]  # strip icon prefix
-                    summary = _tool_summary(tool_name, output_raw)
-                    if current_msg is not None:
-                        await current_msg.update()
-                        current_msg = None
-                    await _send(cl.Message(content=summary))
-
             elif kind == "on_chat_model_stream" and tools_active == 0:
                 chunk = event["data"]["chunk"]
                 content = getattr(chunk, "content", "")
-                tokens: list[str] = []
-                if isinstance(content, str) and content:
-                    tokens = [content]
-                elif isinstance(content, list):
-                    tokens = [p["text"] for p in content
-                               if isinstance(p, dict) and p.get("type") == "text"]
+                reasoning_tokens: list[str] = []
+                text_tokens: list[str] = []
 
-                for token in tokens:
+                # ChatOllama (reasoning=True) puts thinking in additional_kwargs
+                rc = getattr(chunk, "additional_kwargs", {}).get("reasoning_content")
+                if rc:
+                    reasoning_tokens.append(rc)
+
+                if isinstance(content, str) and content:
+                    text_tokens = [content]
+                elif isinstance(content, list):
+                    for p in content:
+                        if not isinstance(p, dict):
+                            continue
+                        if p.get("type") == "thinking" and p.get("thinking"):
+                            reasoning_tokens.append(p["thinking"])
+                        elif p.get("type") == "text" and p.get("text"):
+                            text_tokens.append(p["text"])
+
+                if show_thinking and reasoning_tokens:
+                    await dismiss_thinking()
+                    if reasoning_step is None:
+                        reasoning_step = cl.Step(name="💭 Reasoning", type="tool")
+                        await reasoning_step.__aenter__()
+                    for token in reasoning_tokens:
+                        await reasoning_step.stream_token(token)
+
+                if text_tokens and reasoning_step is not None:
+                    await reasoning_step.__aexit__(None, None, None)
+                    reasoning_step = None
+
+                for token in text_tokens:
+                    await dismiss_thinking()
                     if current_msg is None:
                         current_msg = cl.Message(content="")
                         await _send(current_msg)
@@ -363,6 +381,10 @@ async def _run_agent(user_input: str):
         inner = exc
         if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
             inner = exc.exceptions[0]
+        await dismiss_thinking()
+        if reasoning_step is not None:
+            await reasoning_step.__aexit__(None, None, None)
+            reasoning_step = None
         for step in active_steps.values():
             step.is_error = True
             step.output = f"❌ Error: {inner}"
