@@ -411,6 +411,11 @@ async def _run_agent(user_input: str):
         else:
             current_msg.content = f"❌ **Agent error:** {root_cause}"
 
+    await dismiss_thinking()
+    if reasoning_step is not None:
+        await reasoning_step.__aexit__(None, None, None)
+        reasoning_step = None
+
     # Ensure there is always a message to carry the final action buttons
     if current_msg is None:
         current_msg = cl.Message(content="")

@@ -125,7 +125,7 @@ class _LocalStorageClient(BaseStorageClient):
         pass
 
 
-_FILES_DIR = Path(__file__).parent / ".files"
+_FILES_DIR = Path(__file__).parent / "public" / ".files"
 
 
 def make_data_layer() -> SQLAlchemyDataLayer:
