@@ -13,13 +13,13 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 │  VM2  (this machine)        │        │  VM1  (your 5G core host)        │
 │                             │        │                                  │
 │  Chainlit UI  :8000         │        │  Open5GS 5G core (systemd)       │
-│  LangGraph ReAct agent      │◄──SSE──│  MCP SSE server  :8080/sse       │
-│  Ollama LLM   :11434        │        │  MongoDB         :27017          │
+│  LangGraph ReAct agent      │◄─HTTP──│  MCP server (streamable HTTP)    │
+│  Ollama LLM   :11434        │        │  :8080/mcp · MongoDB :27017      │
 └─────────────────────────────┘        └──────────────────────────────────┘
 ```
 
-**VM2 stack:** Python 3.11+ · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
-**VM1 stack:** Open5GS · MCP SSE server exposing 7 network operations tools
+**VM2 stack:** Python 3.12+ · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
+**VM1 stack:** Open5GS · MCP streamable HTTP server exposing network operations tools
 
 ---
 
@@ -29,11 +29,15 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 |------|-------------|
 | `system_health_snapshot` | One-shot health check of all NFs, MongoDB, and TUN device |
 | `nf_lifecycle` | Start / stop / restart / status any Open5GS NF |
+| `nf_resource_usage` | CPU / memory usage per NF process |
 | `tail_nf_logs` | Read and filter log entries from any NF log file |
-| `list_ue_sessions` | List all active UE registrations and PDU sessions |
-| `subscriber_crud` | Create / read / update / delete subscriber profiles in MongoDB |
 | `read_nf_config` | Read parsed YAML config for any NF (explorable subtree path) |
-| `trace` | Capture a live 5G call flow and render it as a sequence diagram |
+| `list_ue_sessions` | List all active UE registrations and PDU sessions |
+| `get_ue_trace` | Call-flow trace for a UE session (rendered as Mermaid sequence diagram) |
+| `amf_ran_query` | Query AMF for connected RAN / gNB info |
+| `subscriber` | CRUD on subscriber profiles in MongoDB (supports filter param) |
+| `subscriber_update_profile` | Update a subscriber's profile fields |
+| `subscriber_update_slices` | Update a subscriber's network slice assignments |
 
 ---
 
@@ -41,11 +45,11 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 
 ### VM1 — must already be running
 - Open5GS 5G core installed and started
-- MCP SSE server running on port 8080 (`http://<VM1-IP>:8080/sse`)
+- MCP streamable HTTP server running on port 8080 (`http://<VM1-IP>:8080/mcp`)
 
 ### VM2 — this machine
 - Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
-- Python 3.11+ (see [System dependencies](#1-system-dependencies) below)
+- Python 3.12+ (see [System dependencies](#1-system-dependencies) below)
 - [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only — no GPU required)
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
@@ -64,15 +68,15 @@ self-contained block of shell commands you can copy and run as-is.
 sudo apt-get update
 sudo apt-get install -y git curl build-essential
 
-# Ubuntu 24.04 ships Python 3.12 — already satisfies >=3.11, skip the next block.
-# Ubuntu 22.04 ships Python 3.10 — add deadsnakes PPA to get 3.11:
+# Ubuntu 24.04 ships Python 3.12 — already satisfies >=3.12, skip the next block.
+# Ubuntu 22.04 ships Python 3.10 — add deadsnakes PPA to get 3.12:
 sudo apt-get install -y software-properties-common
 sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt-get update
-sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
+sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
 ```
 
-> **Ubuntu 24.04 users:** replace `python3.11` with `python3` in all commands
+> **Ubuntu 24.04 users:** replace `python3.12` with `python3` in all commands
 > below — the system Python is already 3.12.
 
 ### 2. Install Ollama
@@ -116,8 +120,8 @@ sudo ufw status
 git clone git@github.com:edmiand/netagent.git
 cd netagent
 
-# Create and activate virtualenv (adjust python3.11 → python3 on Ubuntu 24.04)
-python3.11 -m venv .venv
+# Create and activate virtualenv (adjust python3.12 → python3 on Ubuntu 24.04)
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # Install all Python dependencies
@@ -136,16 +140,16 @@ Edit `config/mcp.yaml` and set the correct IP/port for your VM1:
 ```yaml
 servers:
   open5gs:
-    transport: sse
-    url: http://<VM1-IP>:8080/sse   # ← replace with your VM1 address
+    transport: streamable_http
+    url: http://<VM1-IP>:8080/mcp   # ← replace with your VM1 address
 ```
 
 ### 7. Set the active model
 
-Edit `config/models.yaml` and set `active` to the model you pulled:
+Edit `config/models.yaml` and set `active` to your preferred cloud model:
 
 ```yaml
-active: qwen2.5:7b
+active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
 ```
 
 ### 8. Run the integration tests (optional but recommended)
@@ -202,7 +206,7 @@ sudo systemctl status netagent
 
 ## Quick start (existing VM)
 
-If the VM already has Python 3.11+, Ollama, and a model pulled:
+If the VM already has Python 3.12+, Ollama running, and VM1 reachable:
 
 ```bash
 git clone git@github.com:edmiand/netagent.git
@@ -234,8 +238,8 @@ Restart Chainlit after changing.
 ```yaml
 servers:
   open5gs:
-    transport: sse
-    url: http://<VM1-IP>:8080/sse  # ← replace with your VM1 address
+    transport: streamable_http
+    url: http://<VM1-IP>:8080/mcp  # ← replace with your VM1 address
 ```
 
 ---

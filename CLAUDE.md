@@ -10,7 +10,7 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - VM1: Open5GS 5G core + MCP streamable HTTP server at :8080/mcp (IP set in config/mcp.yaml)
 - VM2 (this machine): Chainlit app + LangGraph + Ollama
 - MCP connection: streamable HTTP — no local MCP process, just a URL
-- LLM: Ollama at http://localhost:11434/v1 (active model set in config/models.yaml)
+- LLM: Ollama at http://localhost:11434 (active model set in config/models.yaml)
 
 ## Key paths
 - config/models.yaml  — model selection (change 'active' to switch models)
@@ -49,15 +49,15 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - NF names: amf smf upf nrf udm udr ausf pcf bsf nssf
 
 ## Python environment
-- Python 3.13, venv at .venv/
+- Python 3.12, venv at .venv/
 - Always use .venv/bin/python and .venv/bin/pip
 - Install: pip install -e . (pyproject.toml, hatchling build system)
-- Key deps: chainlit 2.11.1, langgraph 1.2.4, langchain-mcp-adapters 0.2.2, mcp 1.27.2,
-            langchain-openai, httpx, pyyaml, python-dotenv
+- Key deps: chainlit 2.11.1, langgraph 1.2.5, langchain-mcp-adapters 0.3.0, mcp 1.27.2,
+            langchain-ollama 1.1.0, langchain-openai 1.3.2, httpx, pyyaml, python-dotenv
 
 ## Installed versions — API gotchas
 - langgraph 1.2.x: create_react_agent uses `prompt=` not `state_modifier=`
-- langchain-mcp-adapters 0.2.x: MultiServerMCPClient does NOT support async context manager;
+- langchain-mcp-adapters 0.3.x: MultiServerMCPClient does NOT support async context manager;
   use: client = MultiServerMCPClient(servers); tools = await client.get_tools()
 - Chainlit 2.x: @cl.set_starters only renders on a truly empty chat (no messages yet);
   for shortcuts accessible throughout a conversation, attach cl.Action buttons to messages
