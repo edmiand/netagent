@@ -1,4 +1,5 @@
 import functools
+import logging
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -6,6 +7,8 @@ from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
+
+logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=1)
@@ -43,9 +46,9 @@ async def test_llm_connection() -> bool:
     model_name = get_active_model_name()
     try:
         await get_llm().ainvoke([HumanMessage(content="ping")])
-        print(f"LLM connected: {model_name}")
+        logger.info("llm_connected model=%s", model_name)
         return True
     except Exception as exc:
-        print(f"LLM connection failed: {exc}")
-        print("Hint: check that Ollama is running and the model is pulled.")
+        logger.error("llm_connect_error error=%s", str(exc)[:200])
+        logger.warning("llm_hint hint=%s", "check that Ollama is running and the model is pulled")
         return False

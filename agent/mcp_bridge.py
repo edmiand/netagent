@@ -1,9 +1,12 @@
+import logging
 import yaml
 from pathlib import Path
 from contextlib import asynccontextmanager
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "mcp.yaml"
+
+logger = logging.getLogger(__name__)
 
 
 def get_mcp_url() -> str:
@@ -21,6 +24,16 @@ async def get_mcp_tools():
         name: {"url": server["url"], "transport": server["transport"]}
         for name, server in cfg["servers"].items()
     }
-    client = MultiServerMCPClient(servers)
-    tools = await client.get_tools()
+    try:
+        url = get_mcp_url()
+        logger.info("mcp_connect url=%s", url)
+        client = MultiServerMCPClient(servers)
+        tools = await client.get_tools()
+    except Exception as exc:
+        logger.error("mcp_connect_error error=%s", str(exc)[:200])
+        raise
+    if len(tools) == 0:
+        logger.warning("mcp_tools_loaded count=%d", len(tools))
+    else:
+        logger.info("mcp_tools_loaded count=%d", len(tools))
     yield tools
