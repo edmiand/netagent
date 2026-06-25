@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import logging
 import re
 import uuid
 import yaml
@@ -18,6 +19,9 @@ from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
 from data_layer import make_data_layer
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
 _MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
@@ -288,6 +292,7 @@ async def _run_agent(user_input: str):
     thread_id = cl.user_session.get("thread_id")
 
     active_steps: dict[str, cl.Step] = {}
+    active_tool_names: dict[str, str] = {}
     tools_active = 0
     # Created lazily on the first streamed token — never pre-sent as empty
     current_msg: cl.Message | None = None
@@ -317,6 +322,7 @@ async def _run_agent(user_input: str):
             if kind == "on_tool_start":
                 await dismiss_thinking()
                 tool_name = event["name"]
+                logger.info("tool_start name=%s input=%s", tool_name, str(event["data"].get("input", ""))[:200])
                 icon = TOOL_ICONS.get(tool_name, "🔧")
 
                 # Discard any pre-tool text fragments the model leaked
@@ -328,13 +334,16 @@ async def _run_agent(user_input: str):
                 step.input = str(event["data"].get("input", ""))
                 await step.__aenter__()
                 active_steps[run_id] = step
+                active_tool_names[run_id] = tool_name
                 tools_active += 1
 
             elif kind == "on_tool_end":
                 step = active_steps.pop(run_id, None)
+                active_tool_names.pop(run_id, None)
                 if step:
                     output_raw = event["data"].get("output", "")
                     output_str = _unwrap_mcp_output(output_raw)
+                    logger.info("tool_end name=%s output=%s", event["name"], output_str[:200])
                     step.output = output_str[:300] + ("…" if len(output_str) > 300 else "")
                     await step.__aexit__(None, None, None)
                     tools_active -= 1
@@ -385,6 +394,8 @@ async def _run_agent(user_input: str):
         inner = exc
         if isinstance(exc, BaseExceptionGroup) and exc.exceptions:
             inner = exc.exceptions[0]
+        tool_name_for_log = next(iter(active_tool_names.values()), "unknown")
+        logger.error("tool_error name=%s error=%s", tool_name_for_log, str(inner)[:200])
         await dismiss_thinking()
         if reasoning_step is not None:
             await reasoning_step.__aexit__(None, None, None)
