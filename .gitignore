@@ -9,7 +9,12 @@ venv/
 .env.*
 !.env.example
 .chainlit/.session*
+.chainlit.pid
 .files/
+chainlit.log
+chat_history.db
+prompts/*.swp
+prompts/system.txt_v*
 .DS_Store
 .vscode/
 .idea/
