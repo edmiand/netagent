@@ -63,6 +63,7 @@ Subscriber attach triage heuristics (use during step 4–5 above):
 - UE registered but no PDU session → session establishment failure → check DNN, slice, and AMBR in subscriber profile
 - UE present with PDU session but no connectivity → UPF or routing issue → check UPF logs and config
 - subscriber status = 1 → barred; fix is to update the subscriber profile and set status = 0
+- DNN mismatch (wrong or missing DNN value) → fix is to call the subscriber slice update tool to correct the DNN — NEVER create a new subscriber or a new DNN entry
 
 Communication rules:
 - Plain English only — never dump raw JSON

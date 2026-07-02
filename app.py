@@ -153,8 +153,9 @@ async def on_chat_start():
     tools = wrap_with_approval(raw_tools)
     cl.user_session.set("human_approval_enabled", False)
     cl.user_session.set("show_thinking", False)
+    cl.user_session.set("suppress_thinking", False)
 
-    agent = create_agent(tools, thinking=False)
+    agent = create_agent(tools, thinking=False, suppress_thinking=False)
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
 
@@ -187,6 +188,12 @@ async def on_chat_start():
             description="Stream the model's internal reasoning before each response",
             initial=False,
         ))
+        widgets.append(Switch(
+            id="suppress_thinking",
+            label="Suppress Model Reasoning",
+            description="Pass reasoning=False to the model — disables internal reasoning entirely for faster (but shallower) responses",
+            initial=False,
+        ))
     await cl.ChatSettings(widgets).send()
 
 
@@ -208,14 +215,15 @@ async def on_debug_failure(action: cl.Action):
         await _run_agent(action.payload["prompt"])
 
 
-def _rebuild_agent(thinking: bool) -> bool:
-    """Rebuild the agent with the given thinking mode. Returns False if session not ready."""
+def _rebuild_agent(thinking: bool, suppress: bool) -> bool:
+    """Rebuild the agent with the given thinking/suppress flags. Returns False if session not ready."""
     raw_tools = cl.user_session.get("raw_tools")
     if not raw_tools:
         return False
     tools = wrap_with_approval(raw_tools)
-    cl.user_session.set("agent", create_agent(tools, thinking=thinking))
+    cl.user_session.set("agent", create_agent(tools, thinking=thinking, suppress_thinking=suppress))
     cl.user_session.set("show_thinking", thinking)
+    cl.user_session.set("suppress_thinking", suppress)
     return True
 
 
@@ -227,10 +235,23 @@ async def on_settings_update(settings: dict):
     await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
     show_thinking = settings.get("show_thinking", False)
-    if show_thinking != cl.user_session.get("show_thinking", False):
-        if _rebuild_agent(show_thinking):
-            status_t = "enabled" if show_thinking else "disabled"
-            await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
+    suppress = settings.get("suppress_thinking", False)
+
+    # suppress takes precedence — can't show reasoning that isn't generated
+    if suppress:
+        show_thinking = False
+
+    thinking_changed = show_thinking != cl.user_session.get("show_thinking", False)
+    suppress_changed = suppress != cl.user_session.get("suppress_thinking", False)
+
+    if thinking_changed or suppress_changed:
+        if _rebuild_agent(show_thinking, suppress):
+            if suppress_changed:
+                status_s = "enabled" if suppress else "disabled"
+                await cl.Message(content=f"🧠 Suppress model reasoning **{status_s}**.").send()
+            elif thinking_changed:
+                status_t = "enabled" if show_thinking else "disabled"
+                await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
 
 
 @cl.on_message

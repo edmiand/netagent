@@ -15,7 +15,7 @@ def _load_config() -> dict:
         return yaml.safe_load(fh)
 
 
-def get_llm(thinking: bool = False) -> ChatOllama:
+def get_llm(thinking: bool = False, suppress_thinking: bool = False) -> ChatOllama:
     cfg = _load_config()
     active_name = cfg["active"]
     model_block = cfg["models"][active_name]
@@ -25,8 +25,11 @@ def get_llm(thinking: bool = False) -> ChatOllama:
         temperature=model_block["temperature"],
         num_predict=model_block["max_tokens"],
     )
-    if thinking and model_block.get("thinking"):
-        kwargs["reasoning"] = True
+    if model_block.get("thinking"):
+        if thinking:
+            kwargs["reasoning"] = True
+        elif suppress_thinking:
+            kwargs["reasoning"] = False
     return ChatOllama(**kwargs)
 
 
