@@ -15,6 +15,7 @@ chainlit.log
 chat_history.db
 prompts/*.swp
 prompts/system.txt_v*
+config/mcp.yaml
 .DS_Store
 .vscode/
 .idea/
