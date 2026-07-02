@@ -116,6 +116,40 @@ def _make_scenario_actions() -> list[cl.Action]:
     ]
 
 
+def _build_widgets() -> list:
+    approval_enabled = cl.user_session.get("human_approval_enabled", False)
+    show_thinking = cl.user_session.get("show_thinking", False)
+    suppress = cl.user_session.get("suppress_thinking", False)
+
+    widgets = [
+        Switch(
+            id="human_approval_enabled",
+            label="Human Approval Mode",
+            description="Require your approval before each tool executes",
+            initial=approval_enabled,
+        )
+    ]
+    if model_supports_thinking():
+        widgets.append(Switch(
+            id="show_thinking",
+            label="Show Model Thinking",
+            description=(
+                "Disable Suppress Model Reasoning to configure this."
+                if suppress else
+                "Stream the model's internal reasoning before each response"
+            ),
+            initial=show_thinking,
+            disabled=suppress,
+        ))
+        widgets.append(Switch(
+            id="suppress_thinking",
+            label="Suppress Model Reasoning",
+            description="Pass reasoning=False to the model — disables internal reasoning entirely for faster (but shallower) responses",
+            initial=suppress,
+        ))
+    return widgets
+
+
 @cl.set_starters
 async def set_starters():
     """Shown on empty chat screen before any message is sent."""
@@ -173,28 +207,7 @@ async def on_chat_start():
         actions=_make_scenario_actions(),
     ))
 
-    widgets = [
-        Switch(
-            id="human_approval_enabled",
-            label="Human Approval Mode",
-            description="Require your approval before each tool executes",
-            initial=False,
-        )
-    ]
-    if model_supports_thinking():
-        widgets.append(Switch(
-            id="show_thinking",
-            label="Show Model Thinking",
-            description="Stream the model's internal reasoning before each response",
-            initial=False,
-        ))
-        widgets.append(Switch(
-            id="suppress_thinking",
-            label="Suppress Model Reasoning",
-            description="Pass reasoning=False to the model — disables internal reasoning entirely for faster (but shallower) responses",
-            initial=False,
-        ))
-    await cl.ChatSettings(widgets).send()
+    await cl.ChatSettings(_build_widgets()).send()
 
 
 @cl.action_callback("health_snapshot")
@@ -230,9 +243,11 @@ def _rebuild_agent(thinking: bool, suppress: bool) -> bool:
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
     enabled = settings.get("human_approval_enabled", False)
+    approval_changed = enabled != cl.user_session.get("human_approval_enabled", False)
     cl.user_session.set("human_approval_enabled", enabled)
-    status = "enabled" if enabled else "disabled"
-    await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
+    if approval_changed:
+        status = "enabled" if enabled else "disabled"
+        await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
     show_thinking = settings.get("show_thinking", False)
     suppress = settings.get("suppress_thinking", False)
@@ -252,6 +267,10 @@ async def on_settings_update(settings: dict):
             elif thinking_changed:
                 status_t = "enabled" if show_thinking else "disabled"
                 await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
+
+    if suppress_changed:
+        # show_thinking's disabled state depends on suppress — refresh the widget
+        await cl.ChatSettings(_build_widgets()).send()
 
 
 @cl.on_message
