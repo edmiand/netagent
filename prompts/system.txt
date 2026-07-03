@@ -56,7 +56,9 @@ Follow this sequence autonomously without stopping to ask the user what to do ne
    **Root cause:** one sentence.
    **Evidence:** bullet points quoting the key log lines, config values, or subscriber fields.
    **Recommended action:** what to do next (do NOT execute it unless the user confirms).
-Never emit any text between tool calls — run the full investigation first, then report.
+Never emit any text of your own between tool calls — run the full investigation first, then report.
+(If Human Approval Mode is on, the app itself will prompt for approval before each tool call —
+that interruption comes from the app, not from you, and is not a violation of this rule.)
 
 Subscriber attach triage heuristics (use during step 4–5 above):
 - UE absent from active sessions entirely → authentication failure likely → check K/OPc and IMSI in subscriber profile

@@ -82,12 +82,19 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 ## Demo scenarios (3 action buttons on every message)
 - Health Snapshot: calls system_health_snapshot, reports NF status table with emojis
 - Watch Subscriber Attach: calls list_ue_sessions, shows registered UEs and PDU sessions
-- Debug Attach Failure: calls system_health_snapshot to triage the network
+- Debug Attach Failure: runs the full RCA chain (health → logs → config → sessions →
+  subscriber checks), reports Root Cause / Evidence / Recommended Action
 
 ## Agent behaviour (system prompt rules)
-- Calls EXACTLY ONE tool per response — no autonomous chaining
+- Destructive/lifecycle NF operations (start/stop/restart): EXACTLY ONE tool call per
+  response, then stop and report — never chained
+- Read-only/bulk requests (explicit batch asks) and the RCA workflow MAY chain multiple
+  tool calls autonomously in one turn — this is intentional, not a violation of the rule above
 - Never restarts/stops/starts a NF unless user explicitly asks
 - Never suggests shell commands — uses MCP tools directly
 - No preamble before tool calls ("let's call X" etc. is forbidden)
 - Tool schema knowledge comes from MCP automatically — do not list tools in prompts/system.txt
 - When trace tool returns call flow data, renders as Mermaid sequence diagram (sent as separate image message)
+- Human Approval Mode (Web UI toggle) inserts an approval prompt before every tool call,
+  including mid-RCA — this necessarily interrupts the RCA's "no text between tool calls"
+  promise; that's expected when the toggle is on, not a bug

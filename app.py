@@ -118,35 +118,34 @@ def _make_scenario_actions() -> list[cl.Action]:
 
 def _build_widgets() -> list:
     approval_enabled = cl.user_session.get("human_approval_enabled", False)
-    show_thinking = cl.user_session.get("show_thinking", False)
-    suppress = cl.user_session.get("suppress_thinking", False)
+    use_reasoning = cl.user_session.get("use_model_reasoning", True)
+    show_thinking = cl.user_session.get("show_thinking", True)
 
-    widgets = [
-        Switch(
-            id="human_approval_enabled",
-            label="Human Approval Mode",
-            description="Require your approval before each tool executes",
-            initial=approval_enabled,
-        )
-    ]
+    widgets = []
     if model_supports_thinking():
+        widgets.append(Switch(
+            id="use_model_reasoning",
+            label="Use Model Reasoning",
+            description="Pass reasoning=True/False to the model — disabling skips internal reasoning entirely for faster (but shallower) responses",
+            initial=use_reasoning,
+        ))
         widgets.append(Switch(
             id="show_thinking",
             label="Show Model Thinking",
             description=(
-                "Disable Suppress Model Reasoning to configure this."
-                if suppress else
+                "Enable Use Model Reasoning to configure this."
+                if not use_reasoning else
                 "Stream the model's internal reasoning before each response"
             ),
-            initial=show_thinking,
-            disabled=suppress,
+            initial=show_thinking if use_reasoning else False,
+            disabled=not use_reasoning,
         ))
-        widgets.append(Switch(
-            id="suppress_thinking",
-            label="Suppress Model Reasoning",
-            description="Pass reasoning=False to the model — disables internal reasoning entirely for faster (but shallower) responses",
-            initial=suppress,
-        ))
+    widgets.append(Switch(
+        id="human_approval_enabled",
+        label="Human Approval Mode",
+        description="Require your approval before each tool executes",
+        initial=approval_enabled,
+    ))
     return widgets
 
 
@@ -186,10 +185,10 @@ async def on_chat_start():
 
     tools = wrap_with_approval(raw_tools)
     cl.user_session.set("human_approval_enabled", False)
-    cl.user_session.set("show_thinking", False)
-    cl.user_session.set("suppress_thinking", False)
+    cl.user_session.set("use_model_reasoning", True)
+    cl.user_session.set("show_thinking", True)
 
-    agent = create_agent(tools, thinking=False, suppress_thinking=False)
+    agent = create_agent(tools, thinking=True, suppress_thinking=False)
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
 
@@ -228,15 +227,15 @@ async def on_debug_failure(action: cl.Action):
         await _run_agent(action.payload["prompt"])
 
 
-def _rebuild_agent(thinking: bool, suppress: bool) -> bool:
-    """Rebuild the agent with the given thinking/suppress flags. Returns False if session not ready."""
+def _rebuild_agent(thinking: bool, use_reasoning: bool) -> bool:
+    """Rebuild the agent with the given thinking/reasoning flags. Returns False if session not ready."""
     raw_tools = cl.user_session.get("raw_tools")
     if not raw_tools:
         return False
     tools = wrap_with_approval(raw_tools)
-    cl.user_session.set("agent", create_agent(tools, thinking=thinking, suppress_thinking=suppress))
+    cl.user_session.set("agent", create_agent(tools, thinking=thinking, suppress_thinking=not use_reasoning))
     cl.user_session.set("show_thinking", thinking)
-    cl.user_session.set("suppress_thinking", suppress)
+    cl.user_session.set("use_model_reasoning", use_reasoning)
     return True
 
 
@@ -249,27 +248,27 @@ async def on_settings_update(settings: dict):
         status = "enabled" if enabled else "disabled"
         await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
-    show_thinking = settings.get("show_thinking", False)
-    suppress = settings.get("suppress_thinking", False)
+    use_reasoning = settings.get("use_model_reasoning", True)
+    show_thinking = settings.get("show_thinking", True)
 
-    # suppress takes precedence — can't show reasoning that isn't generated
-    if suppress:
+    # show_thinking depends on reasoning being enabled — can't show reasoning that isn't generated
+    if not use_reasoning:
         show_thinking = False
 
-    thinking_changed = show_thinking != cl.user_session.get("show_thinking", False)
-    suppress_changed = suppress != cl.user_session.get("suppress_thinking", False)
+    reasoning_changed = use_reasoning != cl.user_session.get("use_model_reasoning", True)
+    thinking_changed = show_thinking != cl.user_session.get("show_thinking", True)
 
-    if thinking_changed or suppress_changed:
-        if _rebuild_agent(show_thinking, suppress):
-            if suppress_changed:
-                status_s = "enabled" if suppress else "disabled"
-                await cl.Message(content=f"🧠 Suppress model reasoning **{status_s}**.").send()
+    if reasoning_changed or thinking_changed:
+        if _rebuild_agent(show_thinking, use_reasoning):
+            if reasoning_changed:
+                status_r = "enabled" if use_reasoning else "disabled"
+                await cl.Message(content=f"🧠 Model reasoning **{status_r}**.").send()
             elif thinking_changed:
                 status_t = "enabled" if show_thinking else "disabled"
                 await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
 
-    if suppress_changed:
-        # show_thinking's disabled state depends on suppress — refresh the widget
+    if reasoning_changed:
+        # show_thinking's disabled state depends on use_model_reasoning — refresh the widget
         await cl.ChatSettings(_build_widgets()).send()
 
 
