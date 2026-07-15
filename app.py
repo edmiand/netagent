@@ -332,6 +332,7 @@ async def _run_agent(user_input: str):
     current_msg: cl.Message | None = None
     show_thinking: bool = cl.user_session.get("show_thinking", False)
     reasoning_step: cl.Step | None = None
+    last_usage: dict | None = None
 
     thinking_step: cl.Step | None = None
     if not show_thinking:
@@ -377,6 +378,11 @@ async def _run_agent(user_input: str):
                     step.output = output_str[:300] + ("…" if len(output_str) > 300 else "")
                     await step.__aexit__(None, None, None)
                     tools_active -= 1
+
+            elif kind == "on_chat_model_end":
+                usage = getattr(event["data"].get("output"), "usage_metadata", None)
+                if usage and usage.get("input_tokens") is not None:
+                    last_usage = usage
 
             elif kind == "on_chat_model_stream" and tools_active == 0:
                 chunk = event["data"]["chunk"]
@@ -474,6 +480,15 @@ async def _run_agent(user_input: str):
         await _send(cl.Message(content="", elements=images))
     else:
         await current_msg.update()
+
+    if last_usage is not None:
+        input_tokens = last_usage["input_tokens"]
+        output_tokens = last_usage.get("output_tokens", 0)
+        async with cl.Step(name="📊 Context", type="tool", default_open=True) as context_step:
+            context_step.output = (
+                f"{input_tokens:,} sent · {output_tokens:,} received "
+                f"({input_tokens + output_tokens:,} total)"
+            )
 
     if not cl.user_session.get("thread_named") and current_msg.content and not current_msg.content.startswith("❌"):
         name = user_input[:60].rstrip()
