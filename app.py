@@ -17,6 +17,7 @@ from agent.llm import get_active_model_name, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
+from agent.tools.rag import search_knowledge_base
 from data_layer import make_data_layer
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -57,6 +58,7 @@ TOOL_ICONS = {
     "list_ue_sessions": "📋",
     "tail_nf_logs": "📜",
     "trace": "🔍",
+    "search_knowledge_base": "📚",
 }
 
 
@@ -93,6 +95,10 @@ def _unwrap_mcp_output(output_raw) -> str:
 
     return str(content)
 
+
+
+def _build_tools(raw_tools: list) -> list:
+    return wrap_with_approval(raw_tools + [search_knowledge_base])
 
 
 def _make_scenario_actions() -> list[cl.Action]:
@@ -183,7 +189,7 @@ async def on_chat_start():
     cl.user_session.set("mcp_ctx", mcp_ctx)
     cl.user_session.set("raw_tools", raw_tools)
 
-    tools = wrap_with_approval(raw_tools)
+    tools = _build_tools(raw_tools)
     cl.user_session.set("human_approval_enabled", False)
     cl.user_session.set("use_model_reasoning", True)
     cl.user_session.set("show_thinking", True)
@@ -232,7 +238,7 @@ def _rebuild_agent(thinking: bool, use_reasoning: bool) -> bool:
     raw_tools = cl.user_session.get("raw_tools")
     if not raw_tools:
         return False
-    tools = wrap_with_approval(raw_tools)
+    tools = _build_tools(raw_tools)
     cl.user_session.set("agent", create_agent(tools, thinking=thinking, suppress_thinking=not use_reasoning))
     cl.user_session.set("show_thinking", thinking)
     cl.user_session.set("use_model_reasoning", use_reasoning)

@@ -19,3 +19,7 @@ models:
     temperature: 0
     max_tokens: 4096
     description: "Lighter local option — needs ~5GB RAM"
+
+embeddings:
+  model: nomic-embed-text
+  base_url: http://localhost:11434

@@ -44,6 +44,8 @@ Follow this sequence autonomously without stopping to ask the user what to do ne
 1. Check the health of all NFs — identify every NF that is degraded or down.
 2. For each degraded or down NF, read its logs — extract errors, exceptions, and connection failures.
 3. If logs suggest a misconfiguration, read the configuration for that NF.
+   You may also call search_knowledge_base to confirm expected values or
+   behavior when a failure cause is ambiguous.
 4. List active UE sessions — check whether the affected UE appears and whether it has an active PDU session.
 5. If a specific IMSI or UE is involved, read the subscriber profile. Check for:
    - status = 1 (barred)

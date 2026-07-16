@@ -2,7 +2,7 @@ import functools
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain_ollama import ChatOllama
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_core.messages import HumanMessage
 
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
@@ -31,6 +31,13 @@ def get_llm(thinking: bool = False, suppress_thinking: bool = False) -> ChatOlla
         elif suppress_thinking:
             kwargs["reasoning"] = False
     return ChatOllama(**kwargs)
+
+
+@functools.lru_cache(maxsize=1)
+def get_embeddings() -> OllamaEmbeddings:
+    cfg = _load_config()
+    emb_block = cfg["embeddings"]
+    return OllamaEmbeddings(model=emb_block["model"], base_url=emb_block["base_url"])
 
 
 def get_active_model_name() -> str:

@@ -87,15 +87,20 @@ tools for their own sake.
 
 Priority order (highest demo payoff for effort first):
 
-### 1. Vector store for RCA grounding (RAG)
-- Small self-hosted vector store (Chroma or pgvector) seeded with Open5GS
-  docs, relevant 3GPP spec excerpts, and past RCA reports.
-- New `search_knowledge_base` MCP-style tool so RCA answers cite *why* a
-  config value is wrong, not just *that* it's wrong.
-- Persist past RCA reports (chat history already goes through
-  `data_layer.py`) into the same store → episodic memory, "have we seen this
-  failure before?" — a strong autonomous-reasoning demo beat.
-- No VM1 changes needed. Cheapest item on this list.
+### 1. Vector store for RCA grounding (RAG) — ✅ DONE
+- Implemented: local Chroma store (`data/chroma/`), embeddings via
+  `nomic-embed-text` on the existing local Ollama instance
+  (`agent/llm.py::get_embeddings()`), 5 seed docs under `knowledge_base/*.md`
+  sourced from real Open5GS documentation (each file cites its source URL —
+  guide/01-quickstart, troubleshoot/01-simple-issues,
+  tutorial/01-your-first-lte, tutorial/07-infoAPI-UE-gNB-session-data).
+- `agent/tools/rag.py::search_knowledge_base` — local (non-MCP) LangChain
+  tool, merged into the same tool list as the MCP tools in
+  `app.py::_build_tools()`. `prompts/system.txt` nudges the RCA flow to call
+  it when a failure cause is ambiguous.
+- **Not yet done (follow-up):** persisting past RCA reports from
+  `data_layer.py`'s chat history into the same store for episodic memory
+  ("have we seen this failure before?") — deferred, still a good next step.
 
 ### 2. Fault injection tool
 - A `fault_injection` tool wrapping something like UERANSIM (synthetic UE

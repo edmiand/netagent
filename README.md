@@ -41,6 +41,29 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 
 ---
 
+## Local Tools (in-app, not MCP)
+
+| Tool | What it does |
+|------|-------------|
+| `search_knowledge_base` | Semantic search over a local Chroma vector store seeded with official Open5GS documentation — grounds RCA answers in real doc content instead of relying on model memory |
+
+Unlike the MCP tools above, this one runs entirely in-process (`agent/tools/rag.py`) — no VM1 round-trip. It's merged into the same tool list the agent sees, so the model calls it exactly like any MCP tool; it just shows up with a 📚 icon in the transcript.
+
+**Knowledge base sources:** the 5 files under `knowledge_base/*.md` are written from real Open5GS documentation (each file cites its source URL at the top), not model-generated content — see:
+- `open5gs-nf-overview.md` — https://open5gs.org/open5gs/docs/guide/01-quickstart/
+- `attach-failure-modes.md` — https://open5gs.org/open5gs/docs/troubleshoot/01-simple-issues/
+- `subscriber-profile-fields.md` — https://open5gs.org/open5gs/docs/tutorial/01-your-first-lte/ and .../tutorial/07-infoAPI-UE-gNB-session-data/
+- `snssai-and-slicing.md` — same infoAPI/quickstart pages, plus flagged supplementary 3GPP background
+- `open5gs-logs-and-configs.md` — https://open5gs.org/open5gs/docs/troubleshoot/01-simple-issues/
+
+**Rebuilding the index:** after editing any file under `knowledge_base/`, rerun:
+```bash
+.venv/bin/python scripts/build_knowledge_base.py
+```
+This chunks the docs, embeds them via a local `nomic-embed-text` Ollama model, and persists vectors to `data/chroma/` (gitignored, regenerated locally — not committed).
+
+---
+
 ## Prerequisites
 
 ### VM1 — must already be running
@@ -50,7 +73,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 ### VM2 — this machine
 - Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
 - Python 3.12+ (see [System dependencies](#1-system-dependencies) below)
-- [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only — no GPU required)
+- [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only for chat models — no GPU required; the RAG knowledge-base tool does need one small local model pulled, see step 3 below)
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
 - Outbound internet access to `https://mermaid.ink` (call flow diagram rendering — no install needed, falls back to raw Mermaid code if unreachable)
@@ -95,15 +118,26 @@ This app uses **cloud-hosted models** (`gemma4:31b-cloud`, `gpt-oss:20b-cloud`)
 — no local GPU is required. Ollama serves as the API gateway only; the model
 computation runs in the cloud.
 
-No `ollama pull` is needed. Verify Ollama is reachable and leave the default
-`active` entry in `config/models.yaml` as-is:
+No `ollama pull` is needed for chat. Verify Ollama is reachable and leave the
+default `active` entry in `config/models.yaml` as-is:
 
 ```yaml
 active: gemma4:31b-cloud
 ```
 
-> **Do not** pull `qwen2.5:7b` or other local models — they require a GPU
-> and will be slow or fail on a CPU-only VM.
+> **Do not** pull `qwen2.5:7b` or other local chat models — they require a
+> GPU and will be slow or fail on a CPU-only VM.
+
+**Exception — embeddings model (small, CPU-friendly):** the RAG knowledge-base
+tool (`search_knowledge_base`) needs a local embeddings model, since Ollama
+Cloud doesn't serve embeddings the same way it serves chat completions:
+
+```bash
+ollama pull nomic-embed-text   # ~274MB, runs fine on CPU
+```
+
+This is configured in `config/models.yaml` under the `embeddings:` block —
+see [Configuration](#configuration) below.
 
 ### 4. Open the firewall (if UFW is active)
 
@@ -152,7 +186,14 @@ Edit `config/models.yaml` and set `active` to your preferred cloud model:
 active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
 ```
 
-### 8. Run the integration tests (optional but recommended)
+### 8. Build the RAG knowledge base
+
+```bash
+.venv/bin/python scripts/build_knowledge_base.py
+# Chunks knowledge_base/*.md, embeds via nomic-embed-text, persists to data/chroma/
+```
+
+### 9. Run the integration tests (optional but recommended)
 
 ```bash
 source .venv/bin/activate
@@ -160,7 +201,7 @@ python test_integration.py
 # Exit code 0 = LLM reachable · MCP tools loaded · agent round-trip OK
 ```
 
-### 9. Start the app
+### 10. Start the app
 
 ```bash
 ./webui-ctl.sh start          # start in background, logs → chainlit.log
@@ -216,6 +257,8 @@ pip install -e .
 cp .env.example .env
 echo "CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
 # Edit config/mcp.yaml → set VM1 address
+ollama pull nomic-embed-text          # embeddings model for the RAG tool
+.venv/bin/python scripts/build_knowledge_base.py
 ./webui-ctl.sh start
 ```
 
@@ -232,6 +275,18 @@ active: gemma4:31b-cloud   # ← change this line to switch models
 Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`.  
 No GPU required — Ollama is used as a gateway only.  
 Restart Chainlit after changing.
+
+### Embeddings — `config/models.yaml`
+
+```yaml
+embeddings:
+  model: nomic-embed-text
+  base_url: http://localhost:11434
+```
+
+Used only by `search_knowledge_base` (`agent/tools/rag.py`) and the build
+script. Unlike chat models, this runs **locally** — requires
+`ollama pull nomic-embed-text` once (see Prerequisites above).
 
 ### MCP server — `config/mcp.yaml`
 
@@ -251,15 +306,24 @@ app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
 webui-ctl.sh           # Process manager: start / stop / restart / status / logs
 agent/
-  llm.py               # LangChain model loader (reads config/models.yaml)
+  llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
   mcp_bridge.py        # SSE client via MultiServerMCPClient
   graph.py             # LangGraph ReAct agent (create_react_agent)
+  approval.py          # wrap_with_approval() — generic, works on any tool (MCP or local)
+  tools/
+    rag.py              # search_knowledge_base — local RAG tool over the Chroma store
 config/
-  models.yaml          # Model registry and active model selection
+  models.yaml          # Model registry, active model selection, embeddings config
   mcp.yaml             # MCP server URL (update VM1 IP here)
   branding.yaml        # Agent name, welcome title, logo file
 prompts/
   system.txt           # Agent system prompt — behaviour rules and formatting
+knowledge_base/
+  *.md                 # Open5GS-doc-sourced reference notes (each cites its source URL)
+scripts/
+  build_knowledge_base.py  # Chunk + embed knowledge_base/*.md → data/chroma/ (rerun after edits)
+data/
+  chroma/               # Persisted RAG vector store (gitignored, generated by the build script)
 .env.example           # Environment template (copy to .env — OLLAMA_API_KEY=ollama)
 test_integration.py    # 3-check integration test (LLM · MCP · agent round-trip)
 ```
@@ -288,6 +352,7 @@ You can also type free-form questions, e.g.:
 - `show subscriber imsi-999700000000001`
 - `tail amf logs for the last 10 minutes`
 - `restart the smf`
+- `what does "Authentication failure(MAC failure)" mean?` — triggers `search_knowledge_base`
 
 ### Call flow diagrams
 
