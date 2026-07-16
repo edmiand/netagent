@@ -98,6 +98,11 @@ Priority order (highest demo payoff for effort first):
   tool, merged into the same tool list as the MCP tools in
   `app.py::_build_tools()`. `prompts/system.txt` nudges the RCA flow to call
   it when a failure cause is ambiguous.
+- `webui-ctl.sh start`/`restart` auto-builds `data/chroma/` if missing (e.g.
+  first run on a fresh VM) — no manual step needed for a new deploy. Editing
+  `knowledge_base/*.md` still requires manually rerunning
+  `scripts/build_knowledge_base.py` to refresh a stale index (not detected
+  automatically).
 - **Not yet done (follow-up):** persisting past RCA reports from
   `data_layer.py`'s chat history into the same store for episodic memory
   ("have we seen this failure before?") — deferred, still a good next step.

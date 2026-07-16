@@ -3,13 +3,23 @@ set -uo pipefail
 
 SERVICE="5g-demo-app.service"
 LOG_FILE="chainlit.log"
+KB_DIR="data/chroma"
+
+# Build the RAG knowledge base if it hasn't been built yet on this VM —
+# data/chroma/ is gitignored so a fresh clone/pull never has it.
+_ensure_knowledge_base() {
+    if [[ ! -d "$KB_DIR" ]]; then
+        echo "Knowledge base not found — building ($KB_DIR missing)..."
+        .venv/bin/python scripts/build_knowledge_base.py
+    fi
+}
 
 # Delegate to systemd user service when available (boot-managed path)
 if systemctl --user is-enabled "$SERVICE" &>/dev/null; then
     case "${1:-help}" in
-        start)   systemctl --user start   "$SERVICE" && echo "Started via systemd" ;;
+        start)   _ensure_knowledge_base; systemctl --user start   "$SERVICE" && echo "Started via systemd" ;;
         stop)    systemctl --user stop    "$SERVICE" && echo "Stopped via systemd" ;;
-        restart) systemctl --user restart "$SERVICE" && echo "Restarted via systemd" ;;
+        restart) _ensure_knowledge_base; systemctl --user restart "$SERVICE" && echo "Restarted via systemd" ;;
         status)  systemctl --user status  "$SERVICE" ;;
         logs)    tail -f "$LOG_FILE" ;;
         *)       echo "Usage: $0 {start|stop|restart|status|logs}" ;;
@@ -29,6 +39,7 @@ start() {
         echo "Already running (PID $(_pid))"
         return
     fi
+    _ensure_knowledge_base
     nohup $CMD >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "Started (PID $!  —  logs: $LOG_FILE)"
