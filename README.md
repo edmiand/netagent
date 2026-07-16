@@ -384,6 +384,41 @@ active: gpt-oss:20b-cloud   # or gemma4:31b-cloud
 
 ---
 
+## Updating the Knowledge Base
+
+The `search_knowledge_base` tool is backed by a local vector index built
+from `knowledge_base/*.md`. Editing those files does **not** update the
+tool's answers by itself — the index is a separate, generated artifact
+(`data/chroma/`) that has to be rebuilt explicitly.
+
+**To add or edit a doc:**
+
+1. Add a new `.md` file under `knowledge_base/`, or edit an existing one.
+   Cite the source (an official Open5GS doc URL, or clearly flag it as
+   supplementary background) at the top of the file — see the existing
+   files for the pattern.
+2. Rebuild the index:
+   ```bash
+   .venv/bin/python scripts/build_knowledge_base.py
+   ```
+   This re-chunks and re-embeds **all** files under `knowledge_base/`, not
+   just the one you changed, and overwrites `data/chroma/`.
+3. Restart the app so the running agent picks up the new tool state:
+   ```bash
+   ./webui-ctl.sh restart
+   ```
+
+**Note:** `./webui-ctl.sh start`/`restart` only auto-builds the index if
+`data/chroma/` is **missing entirely** (e.g. a fresh VM) — it does not
+detect that the index is stale relative to the `.md` source files. Step 2
+above must be run manually any time `knowledge_base/*.md` changes.
+
+To verify the update took effect, ask the agent something that should
+retrieve the new/changed content and confirm a `📚 search_knowledge_base`
+step appears with the expected text.
+
+---
+
 ## Running tests
 
 ```bash
