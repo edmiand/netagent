@@ -201,7 +201,7 @@ async def on_chat_start():
     branding = _load_branding()
     model_name = get_active_model_name()
     tool_names = "  ".join(
-        f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in raw_tools
+        f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in tools
     )
     await _send(cl.Message(
         content=(
