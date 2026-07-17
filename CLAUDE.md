@@ -94,7 +94,10 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Do not hardcode IPs or URLs — always read from config/mcp.yaml
 - Do not hardcode model names — always read from config/models.yaml
 - UPF operations on VM1 may require sudo — handle gracefully
-- Tools return structured data (dicts/JSON), never raw strings
+- MCP tools return structured data (dicts/JSON), never raw strings.
+  Exception: search_knowledge_base (local RAG tool) intentionally returns
+  formatted prose text — it's grounding material for the model, not an
+  operational result.
 
 ## Running the app
 ./webui-ctl.sh start|stop|restart|status|logs   # always use webui-ctl.sh — handles PID, child cleanup, nohup
@@ -119,3 +122,6 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Human Approval Mode (Web UI toggle) inserts an approval prompt before every tool call,
   including mid-RCA — this necessarily interrupts the RCA's "no text between tool calls"
   promise; that's expected when the toggle is on, not a bug
+- After each response, a "📊 Context" step shows sent/received/total token counts for
+  that turn's final model call (from ChatOllama's usage_metadata, populated from Ollama's
+  prompt_eval_count/eval_count) — see app.py's on_chat_model_end handling in _run_agent()
