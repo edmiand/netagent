@@ -490,7 +490,7 @@ async def _run_agent(user_input: str):
     if last_usage is not None:
         input_tokens = last_usage["input_tokens"]
         output_tokens = last_usage.get("output_tokens", 0)
-        async with cl.Step(name="📊 Context", type="tool", default_open=True) as context_step:
+        async with cl.Step(name="📊 Context", type="tool", default_open=False) as context_step:
             context_step.output = (
                 f"{input_tokens:,} sent · {output_tokens:,} received "
                 f"({input_tokens + output_tokens:,} total)"
