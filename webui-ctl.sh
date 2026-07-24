@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-SERVICE="5g-demo-app.service"
+SERVICE="netagent-app.service"
 LOG_FILE="chainlit.log"
 KB_DIR="data/chroma"
 

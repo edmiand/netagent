@@ -188,7 +188,7 @@ active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
 
 ### 8. RAG knowledge base
 
-No manual step needed — `./webui-ctl.sh start` (step 10) auto-builds
+No manual step needed — `./webui-ctl.sh start` (step 11) auto-builds
 `data/chroma/` the first time it's missing. To build it explicitly instead
 (e.g. to check it works before starting the app):
 
@@ -205,7 +205,20 @@ python test_integration.py
 # Exit code 0 = LLM reachable · MCP tools loaded · agent round-trip OK
 ```
 
-### 10. Start the app
+### 10. Enable the app to start on boot (recommended)
+
+```bash
+./scripts/install_service.sh
+```
+
+This creates and enables a `systemd --user` service (`netagent-app.service`)
+and turns on lingering (`loginctl enable-linger`) so the app comes back up
+automatically after a reboot — no login session required. `webui-ctl.sh`
+auto-detects this service once installed and delegates `start`/`stop`/
+`restart`/`status` to `systemctl --user` instead of managing a raw `nohup`
+process. Safe to skip if you'd rather start the app manually each time.
+
+### 11. Start the app
 
 ```bash
 ./webui-ctl.sh start          # start in background, logs → chainlit.log
@@ -216,36 +229,6 @@ python test_integration.py
 ```
 
 Open **http://\<VM2-IP\>:8000** in a browser.
-
----
-
-## Run as a systemd service (persistent)
-
-Create `/etc/systemd/system/netagent.service` — adjust `User`, `WorkingDirectory`,
-and the Python path to match your setup:
-
-```ini
-[Unit]
-Description=5G Core Agent (Chainlit)
-After=network.target ollama.service
-
-[Service]
-Type=simple
-User=ubuntu
-WorkingDirectory=/home/ubuntu/netagent
-ExecStart=/home/ubuntu/netagent/.venv/bin/python start.py --host 0.0.0.0 --port 8000
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now netagent
-sudo systemctl status netagent
-```
 
 ---
 
@@ -262,6 +245,7 @@ cp .env.example .env
 echo "CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
 # Edit config/mcp.yaml → set VM1 address
 ollama pull nomic-embed-text          # embeddings model for the RAG tool
+./scripts/install_service.sh          # optional: auto-start on boot
 ./webui-ctl.sh start                  # auto-builds the RAG knowledge base on first run
 ```
 

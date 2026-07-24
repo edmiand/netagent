@@ -102,6 +102,12 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 ## Running the app
 ./webui-ctl.sh start|stop|restart|status|logs   # always use webui-ctl.sh — handles PID, child cleanup, nohup
 # start.py syncs config/branding.yaml → .chainlit/config.toml before launching Chainlit on 0.0.0.0:8000
+- scripts/install_service.sh — installs+enables a systemd --user service
+  (netagent-app.service) and enables lingering so the app auto-starts on boot.
+  webui-ctl.sh auto-detects this service and delegates start/stop/restart/status
+  to systemctl --user once installed; falls back to raw nohup if not installed.
+  Run once per fresh install/VM (README step 10); not committed to git (it's a
+  per-machine unit file under ~/.config/systemd/user/, not repo state).
 
 ## Demo scenarios (3 action buttons on every message)
 - Health Snapshot: calls system_health_snapshot, reports NF status table with emojis
