@@ -4,7 +4,7 @@
 #
 # Usage: ./scripts/install_service.sh
 #
-# webui-ctl.sh auto-detects this service (by the name below) and delegates
+# netagent.sh auto-detects this service (by the name below) and delegates
 # start/stop/restart/status to systemctl --user once it's enabled.
 set -euo pipefail
 
@@ -50,4 +50,4 @@ loginctl enable-linger "$(whoami)" 2>/dev/null || {
 }
 
 echo "Installed and enabled $SERVICE_NAME (unit: $UNIT_PATH)"
-echo "Start it now with: ./webui-ctl.sh start"
+echo "Start it now with: ./netagent.sh start"

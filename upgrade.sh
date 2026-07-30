@@ -4,7 +4,7 @@
 #   - syncs Python deps via `pip install -e .` (adds new deps, no-ops if unchanged)
 #   - checks the local Ollama embeddings model is pulled (config/models.yaml)
 #   - rebuilds the RAG knowledge base if knowledge_base/*.md changed
-#   - restarts the app via webui-ctl.sh
+#   - restarts the app via netagent.sh
 #
 # Usage: ./upgrade.sh [--dry-run] [--yes] [--no-restart]
 set -uo pipefail
@@ -79,7 +79,7 @@ _confirm "Pull these changes and upgrade?" || { echo "Aborted."; exit 0; }
 # --- 2. Stop the app before code underneath it changes -----------------
 if [[ $NO_RESTART -eq 0 ]]; then
     echo "Stopping app..."
-    ./webui-ctl.sh stop
+    ./netagent.sh stop
 fi
 
 # --- 3. Pull (fast-forward only — refuses to create a merge commit) ----
@@ -125,9 +125,9 @@ fi
 # --- 7. Restart -----------------------------------------------------------
 if [[ $NO_RESTART -eq 0 ]]; then
     echo "Starting app..."
-    ./webui-ctl.sh start
+    ./netagent.sh start
 else
-    echo "Skipping restart (--no-restart). Run './webui-ctl.sh start' when ready."
+    echo "Skipping restart (--no-restart). Run './netagent.sh start' when ready."
 fi
 
 echo
