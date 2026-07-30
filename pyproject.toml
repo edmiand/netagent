@@ -9,7 +9,6 @@ requires-python = ">=3.11"
 dependencies = [
     "chainlit>=2.11.0",
     "langgraph>=1.2.0",
-    "langchain-openai>=1.2.0",
     "langchain-ollama>=1.1.0",
     "langchain-mcp-adapters>=0.2.0",
     "mcp>=1.27.0",

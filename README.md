@@ -18,7 +18,7 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 └─────────────────────────────┘        └──────────────────────────────────┘
 ```
 
-**VM2 stack:** Python 3.12+ · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
+**VM2 stack:** Python 3.11+ · Chainlit 2.x · LangGraph · langchain-mcp-adapters · Ollama  
 **VM1 stack:** Open5GS · MCP streamable HTTP server exposing network operations tools
 
 ---
@@ -56,7 +56,7 @@ Unlike the MCP tools above, this one runs entirely in-process (`agent/tools/rag.
 - `snssai-and-slicing.md` — same infoAPI/quickstart pages, plus flagged supplementary 3GPP background
 - `open5gs-logs-and-configs.md` — https://open5gs.org/open5gs/docs/troubleshoot/01-simple-issues/
 
-**Building the index:** `./webui-ctl.sh start`/`restart` auto-builds it if `data/chroma/` is missing (e.g. first run on a fresh VM, since it's gitignored). After editing any file under `knowledge_base/`, rerun it manually to pick up the changes — a stale index isn't detected automatically:
+**Building the index:** `./netagent.sh start`/`restart` auto-builds it if `data/chroma/` is missing (e.g. first run on a fresh VM, since it's gitignored). After editing any file under `knowledge_base/`, rerun it manually to pick up the changes — a stale index isn't detected automatically:
 ```bash
 .venv/bin/python scripts/build_knowledge_base.py
 ```
@@ -72,7 +72,7 @@ This chunks the docs, embeds them via a local `nomic-embed-text` Ollama model, a
 
 ### VM2 — this machine
 - Ubuntu 22.04 or 24.04 (other Debian-based distros should work)
-- Python 3.12+ (see [System dependencies](#1-system-dependencies) below)
+- Python 3.11+ (see [System dependencies](#1-system-dependencies) below)
 - [Ollama](https://ollama.com) installed and running at `http://localhost:11434` (API gateway only for chat models — no GPU required; the RAG knowledge-base tool does need one small local model pulled, see step 3 below)
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
@@ -91,15 +91,15 @@ self-contained block of shell commands you can copy and run as-is.
 sudo apt-get update
 sudo apt-get install -y git curl build-essential
 
-# Ubuntu 24.04 ships Python 3.12 — already satisfies >=3.12, skip the next block.
-# Ubuntu 22.04 ships Python 3.10 — add deadsnakes PPA to get 3.12:
+# Ubuntu 24.04 ships Python 3.12 — already satisfies >=3.11, skip the next block.
+# Ubuntu 22.04 ships Python 3.10 — add deadsnakes PPA to get 3.11:
 sudo apt-get install -y software-properties-common
 sudo add-apt-repository -y ppa:deadsnakes/ppa
 sudo apt-get update
-sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
+sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
 ```
 
-> **Ubuntu 24.04 users:** replace `python3.12` with `python3` in all commands
+> **Ubuntu 24.04 users:** replace `python3.11` with `python3` in all commands
 > below — the system Python is already 3.12.
 
 ### 2. Install Ollama
@@ -149,13 +149,21 @@ sudo ufw status
 
 ### 5. Clone and install the app
 
+> The SSH clone URL below requires an SSH key already added to your GitHub
+> account (`ssh-keygen -t ed25519 -C "you@example.com"`, then paste
+> `~/.ssh/id_ed25519.pub` into GitHub → Settings → SSH keys). If this is a
+> throwaway VM without a key set up, use the HTTPS URL instead:
+> `git clone https://github.com/edmiand/netagent.git` (you'll be prompted
+> for a GitHub username + [personal access token](https://github.com/settings/tokens)
+> if the repo is private).
+
 ```bash
 # Clone
 git clone git@github.com:edmiand/netagent.git
 cd netagent
 
-# Create and activate virtualenv (adjust python3.12 → python3 on Ubuntu 24.04)
-python3.12 -m venv .venv
+# Create and activate virtualenv (adjust python3.11 → python3 on Ubuntu 24.04)
+python3.11 -m venv .venv
 source .venv/bin/activate
 
 # Install all Python dependencies
@@ -188,7 +196,7 @@ active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
 
 ### 8. RAG knowledge base
 
-No manual step needed — `./webui-ctl.sh start` (step 11) auto-builds
+No manual step needed — `./netagent.sh start` (step 11) auto-builds
 `data/chroma/` the first time it's missing. To build it explicitly instead
 (e.g. to check it works before starting the app):
 
@@ -213,7 +221,7 @@ python test_integration.py
 
 This creates and enables a `systemd --user` service (`netagent-app.service`)
 and turns on lingering (`loginctl enable-linger`) so the app comes back up
-automatically after a reboot — no login session required. `webui-ctl.sh`
+automatically after a reboot — no login session required. `netagent.sh`
 auto-detects this service once installed and delegates `start`/`stop`/
 `restart`/`status` to `systemctl --user` instead of managing a raw `nohup`
 process. Safe to skip if you'd rather start the app manually each time.
@@ -221,11 +229,11 @@ process. Safe to skip if you'd rather start the app manually each time.
 ### 11. Start the app
 
 ```bash
-./webui-ctl.sh start          # start in background, logs → chainlit.log
-./webui-ctl.sh status         # check it's running
-./webui-ctl.sh logs           # tail -f the log
-./webui-ctl.sh stop           # graceful stop + port release
-./webui-ctl.sh restart        # stop then start
+./netagent.sh start          # start in background, logs → chainlit.log
+./netagent.sh status         # check it's running
+./netagent.sh logs           # tail -f the log
+./netagent.sh stop           # graceful stop + port release
+./netagent.sh restart        # stop then start
 ```
 
 Open **http://\<VM2-IP\>:8000** in a browser.
@@ -234,7 +242,7 @@ Open **http://\<VM2-IP\>:8000** in a browser.
 
 ## Quick start (existing VM)
 
-If the VM already has Python 3.12+, Ollama running, and VM1 reachable:
+If the VM already has Python 3.11+, Ollama running, and VM1 reachable:
 
 ```bash
 git clone git@github.com:edmiand/netagent.git
@@ -246,7 +254,7 @@ echo "CHAINLIT_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
 # Edit config/mcp.yaml → set VM1 address
 ollama pull nomic-embed-text          # embeddings model for the RAG tool
 ./scripts/install_service.sh          # optional: auto-start on boot
-./webui-ctl.sh start                  # auto-builds the RAG knowledge base on first run
+./netagent.sh start                  # auto-builds the RAG knowledge base on first run
 ```
 
 ---
@@ -291,7 +299,7 @@ servers:
 ```
 app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
-webui-ctl.sh           # Process manager: start / stop / restart / status / logs
+netagent.sh           # Process manager: start / stop / restart / status / logs
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
   mcp_bridge.py        # SSE client via MultiServerMCPClient
@@ -308,7 +316,7 @@ prompts/
 knowledge_base/
   *.md                 # Open5GS-doc-sourced reference notes (each cites its source URL)
 scripts/
-  build_knowledge_base.py  # Chunk + embed knowledge_base/*.md → data/chroma/ (auto-run by webui-ctl.sh start if missing; rerun manually after editing knowledge_base/*.md)
+  build_knowledge_base.py  # Chunk + embed knowledge_base/*.md → data/chroma/ (auto-run by netagent.sh start if missing; rerun manually after editing knowledge_base/*.md)
 data/
   chroma/               # Persisted RAG vector store (gitignored, generated by the build script)
 .env.example           # Environment template (copy to .env — OLLAMA_API_KEY=ollama)
@@ -363,7 +371,7 @@ active: gpt-oss:20b-cloud   # or gemma4:31b-cloud
 # No ollama pull needed — these models run in the cloud
 
 # Restart the app
-./webui-ctl.sh restart
+./netagent.sh restart
 ```
 
 ---
@@ -389,10 +397,10 @@ tool's answers by itself — the index is a separate, generated artifact
    just the one you changed, and overwrites `data/chroma/`.
 3. Restart the app so the running agent picks up the new tool state:
    ```bash
-   ./webui-ctl.sh restart
+   ./netagent.sh restart
    ```
 
-**Note:** `./webui-ctl.sh start`/`restart` only auto-builds the index if
+**Note:** `./netagent.sh start`/`restart` only auto-builds the index if
 `data/chroma/` is **missing entirely** (e.g. a fresh VM) — it does not
 detect that the index is stale relative to the `.md` source files. Step 2
 above must be run manually any time `knowledge_base/*.md` changes.
