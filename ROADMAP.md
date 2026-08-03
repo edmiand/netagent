@@ -144,3 +144,20 @@ Priority order (highest demo payoff for effort first):
   specialized subagents in a way a single ReAct loop can't.
 - Biggest lift of everything on this list; revisit after the cheaper items
   above are in place.
+
+### 6. Public internet research tool (Tavily search)
+- New local (non-MCP) tool, `agent/tools/web_search.py`, added alongside
+  `rag.py` and merged into the same tool list in `app.py::_build_tools()` —
+  same pattern as `search_knowledge_base`.
+- Backed by Tavily (`langchain-community`'s `TavilySearchResults` or the
+  `tavily-python` SDK) — returns structured JSON results, not raw HTML.
+  Free tier (1000 calls/mo) is enough for a demo. Needs an API key in
+  `.env`.
+- Needs a system-prompt rule for *when* to reach for it vs.
+  `search_knowledge_base`: KB first for anything Open5GS-config-related,
+  web search only for things genuinely outside the local docs (CVEs,
+  upstream GitHub issues/release notes, 3GPP spec questions).
+- Open question: this is the first tool giving VM2 outbound internet
+  access at agent discretion — decide whether it should be gated behind
+  Human Approval Mode by default, or require an explicit user ask before
+  the agent will use it at all.
