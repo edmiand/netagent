@@ -300,6 +300,7 @@ servers:
 app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
 netagent.sh           # Process manager: start / stop / restart / status / logs
+data_layer.py           # SQLite chat history persistence (sqlalchemy + aiosqlite)
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
   mcp_bridge.py        # SSE client via MultiServerMCPClient
@@ -337,17 +338,35 @@ logo_file: rogers-logo.svg        # file must exist in public/logos/
 
 ## Demo scenarios
 
-Three quick-start buttons appear in the UI on every chat start:
+Three quick-start buttons appear on every chat message (and as starters on a
+fresh chat):
 
 1. **🏥 Health Snapshot** — calls `system_health_snapshot`, reports NF status table with 🟢🟡🔴 emojis
 2. **👀 Watch Subscriber Attach** — calls `list_ue_sessions`, shows all registered UEs and PDU sessions
-3. **🔍 Debug Attach Failure** — calls `system_health_snapshot` to triage the network before deeper investigation
+3. **🔍 Debug Attach Failure** — runs the full RCA chain (health → logs → config → sessions → subscriber checks) and reports Root Cause / Evidence / Recommended Action
 
 You can also type free-form questions, e.g.:
 - `show subscriber imsi-999700000000001`
 - `tail amf logs for the last 10 minutes`
 - `restart the smf`
 - `what does "Authentication failure(MAC failure)" mean?` — triggers `search_knowledge_base`
+
+### Chat settings (⚙️ panel)
+
+- **Human Approval Mode** — pauses before every tool call for your explicit approval, including mid-RCA
+- **Use Model Reasoning** — toggles the model's internal reasoning on/off (only shown for models that support it); off trades depth for speed
+- **Show Model Thinking** — streams the model's reasoning before each response (requires Use Model Reasoning on)
+
+### Chat history
+
+Conversations persist across sessions via a local SQLite store (`data_layer.py`).
+Resuming an archived thread opens it read-only — start a new chat to keep working
+with the agent. Each new thread is auto-named from your first message.
+
+### Context step
+
+After each response, a collapsed **📊 Context** step reports that turn's token
+usage (sent · received · total), pulled from the model's usage metadata.
 
 ### Call flow diagrams
 

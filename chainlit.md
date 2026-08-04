@@ -10,13 +10,18 @@ and explain network behaviour — all visible as expandable steps in real time.
 
 | Tool | What it does |
 |------|-------------|
-| `system_health_snapshot` | One-shot health check of all NFs, MongoDB, and the TUN device |
+| `system_health_snapshot` | One-shot health check of all NFs |
 | `nf_lifecycle` | Start, stop, restart, or query the status of any Open5GS NF |
+| `nf_resource_usage` | CPU/memory usage per NF process |
 | `tail_nf_logs` | Read and filter recent log entries from any NF log file |
-| `list_ue_sessions` | List all active UE registrations and their PDU sessions |
-| `subscriber_crud` | Create, read, update, or delete subscriber profiles in MongoDB |
 | `read_nf_config` | Read parsed YAML config for any NF — explorable by subtree path |
-| `trace` | Capture a live 5G call flow and render it as a sequence diagram |
+| `list_ue_sessions` | List all active UE registrations and their PDU sessions |
+| `get_ue_trace` | Capture a UE's call-flow trace and render it as a sequence diagram |
+| `amf_ran_query` | Query AMF for connected RAN/gNB info |
+| `subscriber` | Create, read, update, or delete subscriber profiles in MongoDB |
+| `subscriber_update_profile` | Update a subscriber's profile fields |
+| `subscriber_update_slices` | Update a subscriber's network slice assignments |
+| `search_knowledge_base` | Semantic search over local Open5GS documentation (RAG) |
 
 ---
 
@@ -30,8 +35,13 @@ Three quick-start buttons appear on every message:
 2. **👀 Watch Subscriber Attach** — List all currently registered UEs and their
    active PDU sessions, including assigned IP addresses.
 
-3. **🔍 Debug Attach Failure** — Triage the network with a health snapshot as the
-   first step, then drill down into logs or configs as needed.
+3. **🔍 Debug Attach Failure** — Runs the full root-cause-analysis chain (health →
+   logs → config → sessions → subscriber checks) and reports the root cause,
+   evidence, and a recommended fix.
+
+You can also toggle **Human Approval Mode** in the ⚙️ chat settings to require
+your sign-off before every tool call — useful when demoing lifecycle
+operations like restarts.
 
 ---
 
