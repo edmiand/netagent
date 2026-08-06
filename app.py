@@ -23,6 +23,31 @@ from data_layer import make_data_layer
 # Optional trailing horizontal whitespace between "mermaid" and the newline
 _MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
 
+# LaTeX cleanup — the system prompt forbids LaTeX, but the model still emits it
+# occasionally (e.g. "gNB $\longrightarrow$ AMF"). Chainlit renders it literally,
+# so rewrite it to the Unicode the prompt asks for. See _strip_latex().
+_LATEX_SYMBOLS = {
+    "longrightarrow": "→", "rightarrow": "→", "to": "→", "mapsto": "↦",
+    "longleftarrow": "←", "leftarrow": "←", "gets": "←",
+    "longleftrightarrow": "↔", "leftrightarrow": "↔",
+    "Rightarrow": "⇒", "Leftarrow": "⇐", "Leftrightarrow": "⇔",
+    "times": "×", "cdot": "·", "approx": "≈", "pm": "±",
+    "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥", "neq": "≠", "ne": "≠",
+    "infty": "∞", "ldots": "…", "dots": "…", "bullet": "•", "circ": "∘",
+    "alpha": "α", "beta": "β", "delta": "δ", "Delta": "Δ", "lambda": "λ",
+    "mu": "μ", "sigma": "σ", "tau": "τ", "phi": "φ", "theta": "θ", "omega": "ω",
+}
+# Inline math: only unwrap when the body contains a backslash, so shell-style
+# "$PATH" / "$1" in prose survives untouched.
+_LATEX_DISPLAY_RE = re.compile(r"\$\$([^$]*\\[^$]*)\$\$")
+_LATEX_INLINE_RE = re.compile(r"\$([^$\n]*\\[^$\n]*)\$")
+_LATEX_PAREN_RE = re.compile(r"\\\((.+?)\\\)", re.DOTALL)
+_LATEX_BRACKET_RE = re.compile(r"\\\[(.+?)\\\]", re.DOTALL)
+_LATEX_WRAPPER_RE = re.compile(r"\\(?:text|mathrm|mathit|mathbf)\{([^{}]*)\}")
+_LATEX_COMMAND_RE = re.compile(r"\\([A-Za-z]+)")
+_LATEX_ESCAPE_RE = re.compile(r"\\([%_&#$~^])")
+_LATEX_SPACING_RE = re.compile(r"\\[,;:!]")
+
 _BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
 
 # Chainlit persists generated files (e.g. mermaid images) under .files/<session-id>/
@@ -297,6 +322,36 @@ async def _fetch_mermaid_image(client: httpx.AsyncClient, i: int, match: re.Matc
     return None, match
 
 
+def _strip_latex(content: str) -> str:
+    """Rewrite stray LaTeX notation as the Unicode the system prompt mandates.
+
+    Fenced code blocks are left untouched — a shell snippet's backslashes and
+    "$VAR" references are not math and must survive verbatim.
+    """
+    if "\\" not in content:
+        return content
+
+    # Odd-indexed segments are inside ``` fences; only rewrite the even ones.
+    parts = content.split("```")
+    for i in range(0, len(parts), 2):
+        text = parts[i]
+        if "\\" not in text:
+            continue
+        text = _LATEX_DISPLAY_RE.sub(r"\1", text)
+        text = _LATEX_INLINE_RE.sub(r"\1", text)
+        text = _LATEX_PAREN_RE.sub(r"\1", text)
+        text = _LATEX_BRACKET_RE.sub(r"\1", text)
+        text = _LATEX_WRAPPER_RE.sub(r"\1", text)
+        # Unknown commands are left as-is rather than silently deleted.
+        text = _LATEX_COMMAND_RE.sub(
+            lambda m: _LATEX_SYMBOLS.get(m.group(1), m.group(0)), text
+        )
+        text = _LATEX_ESCAPE_RE.sub(r"\1", text)
+        text = _LATEX_SPACING_RE.sub("", text)
+        parts[i] = text
+    return "```".join(parts)
+
+
 async def _render_mermaid_diagrams(content: str) -> tuple[list[cl.Image], str]:
     """Fetch PNG renders of ```mermaid blocks from mermaid.ink concurrently.
 
@@ -479,6 +534,7 @@ async def _run_agent(user_input: str):
     # Attach fresh action buttons (new instances so forId is None and update() sends them)
     current_msg.actions = _make_scenario_actions()
 
+    current_msg.content = _strip_latex(current_msg.content)
     images, clean_content = await _render_mermaid_diagrams(current_msg.content)
     if images:
         current_msg.content = clean_content
