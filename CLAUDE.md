@@ -88,6 +88,14 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   the frontend — send elements in a fresh cl.Message instead
 - Mermaid diagrams: rendered via mermaid.ink API (mmdc/Puppeteer fails on ARM — Chrome
   binary is x86-only); use cl.Image(content=bytes, size="large") in a separate message
+- LaTeX in model output: prompts/system.txt forbids it, but the model still emits
+  `$\longrightarrow$` occasionally and Chainlit's latex feature is off by default, so it
+  renders literally. app.py's `_strip_latex()` rewrites it to Unicode post-stream, next to
+  the Mermaid rewrite — already diagnosed, don't re-investigate. It deliberately skips
+  fenced code blocks and only unwraps `$…$` when the body has a backslash, so shell
+  snippets and `$PATH`/`$5` survive. Expect a brief flicker: raw LaTeX shows while tokens
+  stream, then snaps to Unicode on completion (token-level fixing can't work — the model
+  splits commands mid-sequence).
 
 ## Constraints
 - Chainlit 2.x is installed — use v2 API only, not v1 patterns
