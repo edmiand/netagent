@@ -145,19 +145,47 @@ Priority order (highest demo payoff for effort first):
 - Biggest lift of everything on this list; revisit after the cheaper items
   above are in place.
 
-### 6. Public internet research tool (Tavily search)
-- New local (non-MCP) tool, `agent/tools/web_search.py`, added alongside
-  `rag.py` and merged into the same tool list in `app.py::_build_tools()` —
-  same pattern as `search_knowledge_base`.
-- Backed by Tavily (`langchain-community`'s `TavilySearchResults` or the
-  `tavily-python` SDK) — returns structured JSON results, not raw HTML.
-  Free tier (1000 calls/mo) is enough for a demo. Needs an API key in
-  `.env`.
-- Needs a system-prompt rule for *when* to reach for it vs.
-  `search_knowledge_base`: KB first for anything Open5GS-config-related,
-  web search only for things genuinely outside the local docs (CVEs,
-  upstream GitHub issues/release notes, 3GPP spec questions).
-- Open question: this is the first tool giving VM2 outbound internet
-  access at agent discretion — decide whether it should be gated behind
-  Human Approval Mode by default, or require an explicit user ask before
-  the agent will use it at all.
+### 6. Release / advisory check tool (narrow internet lookup)
+- **Problem it solves:** both existing knowledge sources are frozen — the
+  Chroma index at last `build_knowledge_base.py` run, the model at its
+  training cutoff. Neither can answer "you're running 2.7.2, what has
+  landed upstream since?" That staleness gap is the *only* thing this item
+  is for.
+- New local (non-MCP) tool, `agent/tools/release_check.py`, merged into the
+  same tool list in `app.py::_build_tools()` — same pattern as
+  `search_knowledge_base`. Backed by Tavily (free tier, 1000 calls/mo,
+  API key in `.env`); returns structured JSON, not raw HTML.
+- **Deliberately not a general web search tool.** Single purpose, single
+  argument: `check_open5gs_release_info(version)`. The agent passes a
+  version string and nothing else — it never composes the query. Query
+  shape is hard-coded in the tool; domains pinned to the Open5GS GitHub
+  releases/issues and NVD.
+- Why narrowed (the general `web_search` version was considered and
+  rejected):
+  - **Routing overlap.** A general "search the web about Open5GS" tool
+    sits directly on top of `search_knowledge_base`'s meaning. Expecting a
+    local Ollama model to arbitrate that reliably is optimistic; the
+    likely outcome is the agent reaching for the internet on questions the
+    KB already answers, making responses slower and less grounded. A tool
+    whose name states its trigger has no such ambiguity.
+  - **Demo determinism.** Every other tool returns data from a machine we
+    control. Open-ended search results change under us between rehearsal
+    and demo; release notes don't.
+  - **Egress safety.** With the query hard-coded, an IMSI/SUPI/internal IP
+    can't leak into a third-party API by way of the model pasting a log
+    line into a search box.
+  - **Positioning.** "It can search the web" is undifferentiated; a
+    version/advisory check reads as a network-operations capability.
+- Demo scenario it unlocks: `tail_nf_logs("amf")` → startup banner yields
+  the running version → release check → "three AMF fixes and one advisory
+  have landed since; one matches the NGAP error in your logs." Joins live
+  network state to current public knowledge, which nothing in the system
+  can do today.
+- Human Approval Mode gating: not needed by default. The call is read-only
+  and can't touch VM1, and gating it mid-RCA would break the "no text
+  between tool calls" flow for no safety gain — the real risk was egress,
+  and the hard-coded query shape already addresses it.
+- Sequencing: lowest priority of this list. Items 3 and 4 are both
+  stronger demo value for comparable effort — item 4's trend reasoning in
+  particular is a better autonomy story with the same read-only safety
+  profile.
