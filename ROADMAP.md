@@ -156,11 +156,21 @@ Priority order (highest demo payoff for effort first):
   message when the key is unset, same pattern as the RAG tool's
   "not built yet" case.
 - `prompts/system.txt` Domain Knowledge section tells the agent to call it
-  only once it has a specific version string in hand (from a config value
-  or log banner) — never as a general search.
-- **Not yet done:** live validation against VM1's actual running Open5GS
-  version and a Tavily key — needs a real API key to test end-to-end and
-  rehearse before a demo.
+  only once it has a specific version string in hand — from a dedicated
+  version-query tool if available, otherwise a config value or log banner —
+  never as a general search.
+- **Live-validated:** VM1 now exposes an `open5gs_version` MCP tool (runs
+  `-v` on a compiled `open5gs-*d` binary, read-only, safe regardless of
+  core state) returning structured `{tag, commits_since_tag, commit_hash,
+  raw, ...}`. `release_check.py` normalizes whatever version string it's
+  given — including raw `git describe` builds like `v2.8.0-68-gb811f1d` —
+  down to the base tag before querying, since GitHub only has release
+  notes per-tag. Ran the full chain end-to-end (`open5gs_version` →
+  `check_open5gs_release_info`) against VM1 with a real `TAVILY_API_KEY`:
+  plumbing confirmed working; result *content* quality depends on what
+  Tavily's scrape turns up for a given tag (e.g. an old GitHub issue page
+  can outrank clean release notes) — a content-quality tuning problem, not
+  a chain-correctness one.
 - **Problem it solves:** both existing knowledge sources are frozen — the
   Chroma index at last `build_knowledge_base.py` run, the model at its
   training cutoff. Neither can answer "you're running 2.7.2, what has
@@ -191,11 +201,10 @@ Priority order (highest demo payoff for effort first):
     line into a search box.
   - **Positioning.** "It can search the web" is undifferentiated; a
     version/advisory check reads as a network-operations capability.
-- Demo scenario it unlocks: `tail_nf_logs("amf")` → startup banner yields
-  the running version → release check → "three AMF fixes and one advisory
-  have landed since; one matches the NGAP error in your logs." Joins live
-  network state to current public knowledge, which nothing in the system
-  can do today.
+- Demo scenario it unlocks: `open5gs_version` → running version → release
+  check → "three AMF fixes and one advisory have landed since; one matches
+  the NGAP error in your logs." Joins live network state to current public
+  knowledge, which nothing in the system can do today.
 - Human Approval Mode gating: not needed by default. The call is read-only
   and can't touch VM1, and gating it mid-RCA would break the "no text
   between tool calls" flow for no safety gain — the real risk was egress,
