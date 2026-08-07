@@ -16,9 +16,13 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - config/models.yaml  — model selection (change 'active' to switch models); also holds the `embeddings:` block
 - config/mcp.yaml     — MCP server URL (update VM1 IP on fresh deploy)
 - agent/llm.py        — LangChain model loader (reads models.yaml); also `get_embeddings()`
-- agent/mcp_bridge.py — SSE client (MultiServerMCPClient, reads mcp.yaml)
+- agent/mcp_bridge.py — streamable HTTP client (MultiServerMCPClient, reads mcp.yaml)
 - agent/graph.py      — LangGraph ReAct agent
+- agent/approval.py   — Human Approval Mode: wraps every tool in an approve/deny gate
+  (cl.AskActionMessage, 120s auto-deny) when the Web UI toggle is on
 - agent/tools/rag.py  — local (non-MCP) `search_knowledge_base` tool, backed by a Chroma store
+- agent/tools/release_check.py — local (non-MCP) `check_open5gs_release_info` tool,
+  Tavily-backed release/advisory lookup
 - knowledge_base/*.md — RAG source docs; each cites its official Open5GS documentation source URL
 - scripts/build_knowledge_base.py — auto-run by netagent.sh start/restart if data/chroma/ is
   missing; rerun manually after editing knowledge_base/*.md to refresh a stale index
@@ -57,6 +61,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   - read_nf_config("amf")                    → full config (keys: logger, global, amf)
   - read_nf_config("amf", "amf.sbi.server.0") → subtree/index path
   - bad path → returns available sibling keys (explorable); bad NF → clear error
+- open5gs_version        runs `-v` on a compiled open5gs-*d binary (read-only, safe
+  regardless of core state); returns {tag, commits_since_tag, commit_hash, raw, ...} —
+  feed straight into check_open5gs_release_info
 
 ## Open5GS paths on VM1 (read-only reference)
 - Logs:    /home/dmandrey/open5gs/install/var/log/open5gs/<nf>.log
@@ -147,3 +154,10 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - After each response, a "📊 Context" step shows sent/received/total token counts for
   that turn's final model call (from ChatOllama's usage_metadata, populated from Ollama's
   prompt_eval_count/eval_count) — see app.py's on_chat_model_end handling in _run_agent()
+- Use Model Reasoning / Show Model Thinking (Web UI toggles, only shown when the active
+  model's models.yaml entry has `thinking: true`): "Use Model Reasoning" passes
+  reasoning=True/False to ChatOllama; "Show Model Thinking" (disabled unless reasoning is
+  on) streams the model's internal reasoning tokens into a separate "💭 Reasoning" step
+  before the final answer instead of hiding them behind a generic "Thinking…" step.
+  Changing either setting rebuilds the agent (agent/graph.py's create_agent is not
+  session-persistent across this toggle) — see app.py's on_settings_update/_rebuild_agent.
