@@ -35,6 +35,12 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   seeded from real Open5GS documentation via scripts/build_knowledge_base.py.
   Merged into the same tool list as the MCP tools in app.py's _build_tools() —
   the agent treats it identically to an MCP tool call.
+- check_open5gs_release_info  narrow Tavily-backed lookup (agent/tools/release_check.py)
+  for "what's changed upstream since version X" — domain pinned to
+  github.com/open5gs/open5gs, single `version` argument, no
+  free-text query composed by the model. Requires TAVILY_API_KEY in .env (see
+  .env.example); degrades gracefully with a clear message if unset. Merged
+  into the same tool list as search_knowledge_base in app.py's _build_tools().
 
 ## MCP tools available on VM1
 - nf_lifecycle          start/stop/restart/status any Open5GS NF
@@ -66,7 +72,7 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Key deps: chainlit, langgraph, langchain-mcp-adapters, mcp, langchain-ollama, httpx,
             pyyaml, python-dotenv, sqlalchemy + aiosqlite (chat history persistence,
             data_layer.py), langchain-chroma, chromadb, langchain-text-splitters
-            (RAG knowledge-base tool)
+            (RAG knowledge-base tool), tavily-python (release/advisory check tool)
 
 ## RAG / embeddings gotcha
 - Chat models are Ollama Cloud (no local pull needed), but the embeddings model

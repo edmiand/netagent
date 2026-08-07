@@ -18,6 +18,7 @@ from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
 from agent.tools.rag import search_knowledge_base
+from agent.tools.release_check import check_open5gs_release_info
 from data_layer import make_data_layer
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -84,6 +85,7 @@ TOOL_ICONS = {
     "tail_nf_logs": "📜",
     "trace": "🔍",
     "search_knowledge_base": "📚",
+    "check_open5gs_release_info": "🌐",
 }
 
 
@@ -123,7 +125,9 @@ def _unwrap_mcp_output(output_raw) -> str:
 
 
 def _build_tools(raw_tools: list) -> list:
-    return wrap_with_approval(raw_tools + [search_knowledge_base])
+    return wrap_with_approval(
+        raw_tools + [search_knowledge_base, check_open5gs_release_info]
+    )
 
 
 def _make_scenario_actions() -> list[cl.Action]:

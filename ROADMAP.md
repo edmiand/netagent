@@ -145,7 +145,22 @@ Priority order (highest demo payoff for effort first):
 - Biggest lift of everything on this list; revisit after the cheaper items
   above are in place.
 
-### 6. Release / advisory check tool (narrow internet lookup)
+### 6. Release / advisory check tool (narrow internet lookup) — ✅ DONE
+- Implemented: `agent/tools/release_check.py::check_open5gs_release_info`,
+  merged into the tool list in `app.py::_build_tools()` alongside
+  `search_knowledge_base`. Backed by `tavily-python`, domain pinned to
+  `github.com/open5gs/open5gs` (NVD dropped for now — revisit if the
+  advisory use case needs CVE coverage beyond what GitHub issues mention).
+  Reads `TAVILY_API_KEY`
+  from `.env` (see `.env.example`); degrades gracefully with a clear
+  message when the key is unset, same pattern as the RAG tool's
+  "not built yet" case.
+- `prompts/system.txt` Domain Knowledge section tells the agent to call it
+  only once it has a specific version string in hand (from a config value
+  or log banner) — never as a general search.
+- **Not yet done:** live validation against VM1's actual running Open5GS
+  version and a Tavily key — needs a real API key to test end-to-end and
+  rehearse before a demo.
 - **Problem it solves:** both existing knowledge sources are frozen — the
   Chroma index at last `build_knowledge_base.py` run, the model at its
   training cutoff. Neither can answer "you're running 2.7.2, what has
