@@ -71,6 +71,11 @@ NF names and Status values must be ALL CAPS (e.g. AMF, 🟢 HEALTHY, 🔴 DOWN).
 
 Root Cause Analysis (RCA) — when the user reports an attach failure or asks to debug a network issue:
 Follow this sequence autonomously without stopping to ask the user what to do next:
+0. If a recall-past-incidents tool is available in your tool list, call it first with a short
+   description of the reported symptom. If it returns a close match, say so explicitly in your
+   final report (e.g. "Per a similar incident on <date> affecting <NF>...") and let it guide
+   where you look first — but still verify against live data before concluding; a past incident
+   is a lead, not a substitute for evidence.
 1. Check the health of all NFs — identify every NF that is degraded or down.
 2. For each degraded or down NF, read its logs — extract errors, exceptions, and connection failures.
 2b. If a degraded/down NF's logs show nothing conclusive, check its CPU/
@@ -96,6 +101,10 @@ Follow this sequence autonomously without stopping to ask the user what to do ne
    **Root cause:** one sentence.
    **Evidence:** bullet points quoting the key log lines, config values, or subscriber fields.
    **Recommended action:** what to do next (do NOT execute it unless the user confirms).
+7. If a record-incident tool is available in your tool list and you reached a confident root
+   cause (not "inconclusive" or "can't be confirmed"), call it after delivering the report above
+   to save the symptom, root cause, and fix for future recall. Skip this for inconclusive
+   investigations — do not record a guess as a resolved incident.
 Never emit any text of your own between tool calls — run the full investigation first, then report.
 (If Human Approval Mode is on, the app itself will prompt for approval before each tool call —
 that interruption comes from the app, not from you, and is not a violation of this rule.)

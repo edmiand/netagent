@@ -19,6 +19,7 @@ from agent.graph import create_agent
 from agent.approval import wrap_with_approval
 from agent.tools.rag import search_knowledge_base
 from agent.tools.release_check import check_open5gs_release_info
+from agent.tools.memory import recall_similar_incidents, record_incident
 from data_layer import make_data_layer
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -86,6 +87,8 @@ TOOL_ICONS = {
     "trace": "🔍",
     "search_knowledge_base": "📚",
     "check_open5gs_release_info": "🌐",
+    "recall_similar_incidents": "🧩",
+    "record_incident": "🧠",
 }
 
 
@@ -125,9 +128,10 @@ def _unwrap_mcp_output(output_raw) -> str:
 
 
 def _build_tools(raw_tools: list) -> list:
-    return wrap_with_approval(
-        raw_tools + [search_knowledge_base, check_open5gs_release_info]
-    )
+    extra_tools = [search_knowledge_base, check_open5gs_release_info]
+    if cl.user_session.get("memory_learning_enabled", True):
+        extra_tools += [recall_similar_incidents, record_incident]
+    return wrap_with_approval(raw_tools + extra_tools)
 
 
 def _make_scenario_actions() -> list[cl.Action]:
@@ -155,6 +159,7 @@ def _build_widgets() -> list:
     approval_enabled = cl.user_session.get("human_approval_enabled", False)
     use_reasoning = cl.user_session.get("use_model_reasoning", True)
     show_thinking = cl.user_session.get("show_thinking", True)
+    memory_enabled = cl.user_session.get("memory_learning_enabled", True)
 
     widgets = []
     if model_supports_thinking():
@@ -180,6 +185,12 @@ def _build_widgets() -> list:
         label="Human Approval Mode",
         description="Require your approval before each tool executes",
         initial=approval_enabled,
+    ))
+    widgets.append(Switch(
+        id="memory_learning_enabled",
+        label="Memory & Learning",
+        description="Let the agent recall similar past incidents and record new ones it resolves",
+        initial=memory_enabled,
     ))
     return widgets
 
@@ -218,10 +229,11 @@ async def on_chat_start():
     cl.user_session.set("mcp_ctx", mcp_ctx)
     cl.user_session.set("raw_tools", raw_tools)
 
-    tools = _build_tools(raw_tools)
     cl.user_session.set("human_approval_enabled", False)
     cl.user_session.set("use_model_reasoning", True)
     cl.user_session.set("show_thinking", True)
+    cl.user_session.set("memory_learning_enabled", True)
+    tools = _build_tools(raw_tools)
 
     agent = create_agent(tools, thinking=True, suppress_thinking=False)
     cl.user_session.set("agent", agent)
@@ -274,6 +286,14 @@ def _rebuild_agent(thinking: bool, use_reasoning: bool) -> bool:
     return True
 
 
+def _refresh_tools() -> bool:
+    """Rebuild the agent's tool list only (e.g. after a memory toggle), keeping the current thinking/reasoning config."""
+    return _rebuild_agent(
+        cl.user_session.get("show_thinking", True),
+        cl.user_session.get("use_model_reasoning", True),
+    )
+
+
 @cl.on_settings_update
 async def on_settings_update(settings: dict):
     enabled = settings.get("human_approval_enabled", False)
@@ -305,6 +325,14 @@ async def on_settings_update(settings: dict):
     if reasoning_changed:
         # show_thinking's disabled state depends on use_model_reasoning — refresh the widget
         await cl.ChatSettings(_build_widgets()).send()
+
+    memory_enabled = settings.get("memory_learning_enabled", True)
+    memory_changed = memory_enabled != cl.user_session.get("memory_learning_enabled", True)
+    cl.user_session.set("memory_learning_enabled", memory_enabled)
+    if memory_changed:
+        _refresh_tools()
+        status_m = "enabled" if memory_enabled else "disabled"
+        await cl.Message(content=f"🧠 Memory & Learning **{status_m}**.").send()
 
 
 @cl.on_message

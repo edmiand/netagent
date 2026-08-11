@@ -14,6 +14,7 @@ venv/
 chainlit.log
 chat_history.db
 data/chroma/
+data/memory_store/
 prompts/*.swp
 prompts/system.txt_v*
 config/mcp.yaml
