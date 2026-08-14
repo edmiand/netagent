@@ -472,13 +472,15 @@ async def _run_agent(user_input: str):
                         break
 
                 if specialist_label:
-                    # type="run" marks this as a spawned agent, not a plain tool call —
-                    # Chainlit renders it distinctly from the leaf MCP tool steps nested
-                    # underneath it.
+                    # type stays "tool", not "run" — this project's cot="tool_call"
+                    # setting (.chainlit/config.toml) hides any step whose type isn't
+                    # "tool" from the UI entirely, so "run" would make this invisible
+                    # rather than distinct. The name/icon carry the distinction instead.
                     step = cl.Step(
                         name=f"🤖 Subagent: {specialist_label}",
-                        type="run",
+                        type="tool",
                         parent_id=parent_step.id if parent_step else None,
+                        default_open=True,
                     )
                 else:
                     icon = TOOL_ICONS.get(tool_name, "🔧")
