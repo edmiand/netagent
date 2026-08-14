@@ -15,6 +15,7 @@ _PROMPTS_DIR = Path(__file__).parent.parent / "prompts" / "subagents"
 _SPECIALISTS = [
     {
         "name": "investigate_connectivity",
+        "label": "Connectivity Investigator",
         "description": (
             "Investigate a subscriber/UE connectivity problem: can't attach, no PDU "
             "session, registered but no data. Runs its own multi-step investigation "
@@ -27,6 +28,7 @@ _SPECIALISTS = [
     },
     {
         "name": "investigate_nf_health",
+        "label": "NF Health Investigator",
         "description": (
             "Investigate a network function reported down, degraded, or "
             "misbehaving. Runs its own multi-step investigation across health "
@@ -38,6 +40,10 @@ _SPECIALISTS = [
         "tool_names": {"system_health_snapshot", "tail_nf_logs", "nf_resource_usage", "read_nf_config"},
     },
 ]
+
+# Exposed so app.py can recognize a specialist dispatch step (vs. a leaf MCP tool
+# step) and render it distinctly — see SPECIALIST_LABELS usage in _run_agent.
+SPECIALIST_LABELS = {spec["name"]: spec["label"] for spec in _SPECIALISTS}
 
 
 def build_specialist_tools(tools: list) -> list[StructuredTool]:

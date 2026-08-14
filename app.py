@@ -17,6 +17,7 @@ from agent.llm import get_active_model_name, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
+from agent.subagents import SPECIALIST_LABELS
 from agent.tools.rag import search_knowledge_base
 from agent.tools.release_check import check_open5gs_release_info
 from agent.tools.memory import recall_similar_incidents, record_incident
@@ -452,7 +453,7 @@ async def _run_agent(user_input: str):
             if kind == "on_tool_start":
                 await dismiss_thinking()
                 tool_name = event["name"]
-                icon = TOOL_ICONS.get(tool_name, "🔧")
+                specialist_label = SPECIALIST_LABELS.get(tool_name)
 
                 # Discard any pre-tool text fragments the model leaked
                 if current_msg is not None:
@@ -470,11 +471,22 @@ async def _run_agent(user_input: str):
                         parent_step = active_steps[ancestor_id]
                         break
 
-                step = cl.Step(
-                    name=f"{icon} {tool_name}",
-                    type="tool",
-                    parent_id=parent_step.id if parent_step else None,
-                )
+                if specialist_label:
+                    # type="run" marks this as a spawned agent, not a plain tool call —
+                    # Chainlit renders it distinctly from the leaf MCP tool steps nested
+                    # underneath it.
+                    step = cl.Step(
+                        name=f"🤖 Subagent: {specialist_label}",
+                        type="run",
+                        parent_id=parent_step.id if parent_step else None,
+                    )
+                else:
+                    icon = TOOL_ICONS.get(tool_name, "🔧")
+                    step = cl.Step(
+                        name=f"{icon} {tool_name}",
+                        type="tool",
+                        parent_id=parent_step.id if parent_step else None,
+                    )
                 step.input = str(event["data"].get("input", ""))
                 await step.__aenter__()
                 active_steps[run_id] = step
@@ -485,7 +497,13 @@ async def _run_agent(user_input: str):
                 if step:
                     output_raw = event["data"].get("output", "")
                     output_str = _unwrap_mcp_output(output_raw)
-                    step.output = output_str[:300] + ("…" if len(output_str) > 300 else "")
+                    if event["name"] in SPECIALIST_LABELS:
+                        # A specialist's output is already a synthesized prose report
+                        # (Findings/Likely cause/Unverifiable) — truncating it at leaf-
+                        # tool length would hide the point of delegating to it.
+                        step.output = output_str
+                    else:
+                        step.output = output_str[:300] + ("…" if len(output_str) > 300 else "")
                     await step.__aexit__(None, None, None)
                     tools_active -= 1
 
