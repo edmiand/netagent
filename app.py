@@ -89,6 +89,8 @@ TOOL_ICONS = {
     "check_open5gs_release_info": "🌐",
     "recall_similar_incidents": "🧩",
     "record_incident": "🧠",
+    "investigate_connectivity": "📶",
+    "investigate_nf_health": "🩺",
 }
 
 
@@ -457,7 +459,22 @@ async def _run_agent(user_input: str):
                     await current_msg.remove()
                     current_msg = None
 
-                step = cl.Step(name=f"{icon} {tool_name}", type="tool")
+                # Specialist subagent tool calls (e.g. investigate_nf_health) can run
+                # concurrently with each other, so their nested tool events interleave
+                # in this stream. Chainlit's ambient "currently open step" context can't
+                # tell them apart — derive the real parent explicitly from parent_ids
+                # (nearest ancestor run_id that's still an open step) instead.
+                parent_step = None
+                for ancestor_id in reversed(event.get("parent_ids", [])):
+                    if ancestor_id in active_steps:
+                        parent_step = active_steps[ancestor_id]
+                        break
+
+                step = cl.Step(
+                    name=f"{icon} {tool_name}",
+                    type="tool",
+                    parent_id=parent_step.id if parent_step else None,
+                )
                 step.input = str(event["data"].get("input", ""))
                 await step.__aenter__()
                 active_steps[run_id] = step
