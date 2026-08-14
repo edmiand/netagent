@@ -8,6 +8,7 @@ from pathlib import Path
 
 import httpx
 import chainlit as cl
+from chainlit.context import local_steps
 from chainlit.data import get_data_layer
 from langchain_core.messages import HumanMessage
 
@@ -132,7 +133,7 @@ def _unwrap_mcp_output(output_raw) -> str:
 
 def _build_tools(raw_tools: list) -> list:
     extra_tools = [search_knowledge_base, check_open5gs_release_info]
-    if cl.user_session.get("memory_learning_enabled", True):
+    if cl.user_session.get("memory_learning_enabled", False):
         extra_tools += [recall_similar_incidents, record_incident]
     return wrap_with_approval(raw_tools + extra_tools)
 
@@ -162,7 +163,7 @@ def _build_widgets() -> list:
     approval_enabled = cl.user_session.get("human_approval_enabled", False)
     use_reasoning = cl.user_session.get("use_model_reasoning", True)
     show_thinking = cl.user_session.get("show_thinking", True)
-    memory_enabled = cl.user_session.get("memory_learning_enabled", True)
+    memory_enabled = cl.user_session.get("memory_learning_enabled", False)
 
     widgets = []
     if model_supports_thinking():
@@ -235,7 +236,7 @@ async def on_chat_start():
     cl.user_session.set("human_approval_enabled", False)
     cl.user_session.set("use_model_reasoning", True)
     cl.user_session.set("show_thinking", True)
-    cl.user_session.set("memory_learning_enabled", True)
+    cl.user_session.set("memory_learning_enabled", False)
     tools = _build_tools(raw_tools)
 
     agent = create_agent(tools, thinking=True, suppress_thinking=False)
@@ -329,8 +330,8 @@ async def on_settings_update(settings: dict):
         # show_thinking's disabled state depends on use_model_reasoning — refresh the widget
         await cl.ChatSettings(_build_widgets()).send()
 
-    memory_enabled = settings.get("memory_learning_enabled", True)
-    memory_changed = memory_enabled != cl.user_session.get("memory_learning_enabled", True)
+    memory_enabled = settings.get("memory_learning_enabled", False)
+    memory_changed = memory_enabled != cl.user_session.get("memory_learning_enabled", False)
     cl.user_session.set("memory_learning_enabled", memory_enabled)
     if memory_changed:
         _refresh_tools()
@@ -480,7 +481,6 @@ async def _run_agent(user_input: str):
                         name=f"🤖 Subagent: {specialist_label}",
                         type="tool",
                         parent_id=parent_step.id if parent_step else None,
-                        default_open=True,
                     )
                 else:
                     icon = TOOL_ICONS.get(tool_name, "🔧")
@@ -489,6 +489,14 @@ async def _run_agent(user_input: str):
                         type="tool",
                         parent_id=parent_step.id if parent_step else None,
                     )
+
+                # cl.Step.__aenter__ only honors parent_id when it's truthy — for a
+                # true top-level step (parent_step is None) it silently falls back to
+                # Chainlit's own "last step still open" guess, which is wrong whenever
+                # two specialists overlap in time (one sibling is still open when the
+                # other starts). Force Chainlit's internal step stack to the parent
+                # we've already derived above so __aenter__ can't override it.
+                local_steps.set([parent_step] if parent_step else [])
                 step.input = str(event["data"].get("input", ""))
                 await step.__aenter__()
                 active_steps[run_id] = step
