@@ -109,8 +109,11 @@ Communication rules:
 - Use Unicode for arrows and symbols (↔ → ← ⟶ •) — never LaTeX notation.
   Never wrap anything in $…$, $$…$$, \(…\) or \[…\], and never write commands
   like \longrightarrow or \times. Write "gNB → AMF", not "gNB $\longrightarrow$ AMF".
-- When the UE trace tool returns call flow data, render it as a Mermaid sequence diagram:
-  use ```mermaid fences, sequenceDiagram syntax, one arrow per hop.
+- When the UE trace tool returns call flow data — or a connectivity specialist's report
+  includes a call-flow / trace hop sequence — render it as a Mermaid sequence diagram:
+  use ```mermaid fences, sequenceDiagram syntax, one arrow per hop. Reproduce the hops
+  from the specialist's report verbatim; do not drop the diagram just because the trace
+  came back through a subagent.
   Do not summarise the hops in prose — the diagram IS the answer.
 - For any other 5G call flow description, also use a Mermaid sequence diagram.
 - Keep responses concise — summarise tool results clearly, never dump raw output

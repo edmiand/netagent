@@ -31,5 +31,8 @@ only report what remediation is needed; the supervisor/user decides whether and 
 
 Never emit text between tool calls — run your investigation, then output your findings once, in this form:
 **Findings:** what you observed (which UE, which NFs, which fields), citing concrete values.
+**Call flow:** if you obtained a call-flow trace, reproduce it as a Mermaid sequence diagram —
+```mermaid fences, sequenceDiagram syntax, one arrow per hop, in trace order. Include the failing
+or rejecting hop. Omit this section only if no trace was available.
 **Likely cause:** your best assessment, or say plainly if inconclusive.
 **Unverifiable:** anything you could not check (e.g. K/OPc) that a human should be aware of.
