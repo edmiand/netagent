@@ -17,6 +17,7 @@ from chainlit.input_widget import Select, Switch
 from agent.llm import get_active_model_name, list_available_models, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
+from langgraph.checkpoint.memory import MemorySaver
 from agent.approval import wrap_with_approval
 from agent.subagents import SPECIALIST_LABELS
 from agent.tools.rag import search_knowledge_base
@@ -250,10 +251,15 @@ async def on_chat_start():
     cl.user_session.set("use_model_reasoning", thinking_capable)
     cl.user_session.set("show_thinking", thinking_capable)
     cl.user_session.set("memory_learning_enabled", False)
+    # One checkpointer for the whole session — reused on every _rebuild_agent so a
+    # mid-chat model/reasoning switch keeps the conversation history.
+    checkpointer = MemorySaver()
+    cl.user_session.set("checkpointer", checkpointer)
     tools = _build_tools(raw_tools)
 
     agent = create_agent(
-        tools, thinking=thinking_capable, suppress_thinking=False, model_name=model_name
+        tools, thinking=thinking_capable, suppress_thinking=False,
+        model_name=model_name, checkpointer=checkpointer,
     )
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
@@ -302,7 +308,8 @@ def _rebuild_agent(thinking: bool, use_reasoning: bool, model_name: str | None =
         model_name = cl.user_session.get("model_name") or get_active_model_name()
     tools = _build_tools(raw_tools)
     cl.user_session.set("agent", create_agent(
-        tools, thinking=thinking, suppress_thinking=not use_reasoning, model_name=model_name
+        tools, thinking=thinking, suppress_thinking=not use_reasoning, model_name=model_name,
+        checkpointer=cl.user_session.get("checkpointer"),
     ))
     cl.user_session.set("show_thinking", thinking)
     cl.user_session.set("use_model_reasoning", use_reasoning)
