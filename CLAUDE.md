@@ -13,7 +13,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - LLM: Ollama at http://localhost:11434 (active model set in config/models.yaml)
 
 ## Key paths
-- config/models.yaml  — model selection (change 'active' to switch models); also holds the `embeddings:` block
+- config/models.yaml  — model registry + default ('active'); per-model `enabled: false`
+  hides an entry from the in-chat picker, `context_window` → Ollama num_ctx (per the
+  model's ollama.com page); also holds the `embeddings:` block
 - config/mcp.yaml     — MCP server URL (update VM1 IP on fresh deploy)
 - agent/llm.py        — LangChain model loader (reads models.yaml); also `get_embeddings()`
 - agent/mcp_bridge.py — streamable HTTP client (MultiServerMCPClient, reads mcp.yaml)
@@ -154,8 +156,15 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - After each response, a "📊 Context" step shows sent/received/total token counts for
   that turn's final model call (from ChatOllama's usage_metadata, populated from Ollama's
   prompt_eval_count/eval_count) — see app.py's on_chat_model_end handling in _run_agent()
-- Use Model Reasoning / Show Model Thinking (Web UI toggles, only shown when the active
-  model's models.yaml entry has `thinking: true`): "Use Model Reasoning" passes
+- Model (Web UI ⚙️ Settings dropdown, shown only when >1 model is available — i.e. more
+  than one models.yaml entry without `enabled: false`, counting `active`): picks the model
+  backing the agent for that chat only. models.yaml `active` stays the default for new
+  chats; nothing is written back to the file. Changing it calls _rebuild_agent with the
+  new model_name (threaded through get_llm, create_agent, and build_specialist_tools so
+  subagents use it too) and re-sends ChatSettings so the reasoning switches appear/vanish
+  with the new model's `thinking:` flag. See app.py's on_settings_update model handling.
+- Use Model Reasoning / Show Model Thinking (Web UI toggles, only shown when the session's
+  selected model's models.yaml entry has `thinking: true`): "Use Model Reasoning" passes
   reasoning=True/False to ChatOllama; "Show Model Thinking" (disabled unless reasoning is
   on) streams the model's internal reasoning tokens into a separate "💭 Reasoning" step
   before the final answer instead of hiding them behind a generic "Thinking…" step.

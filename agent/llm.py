@@ -15,16 +15,30 @@ def _load_config() -> dict:
         return yaml.safe_load(fh)
 
 
-def get_llm(thinking: bool = False, suppress_thinking: bool = False) -> ChatOllama:
+def _resolve_model(model_name: str | None) -> tuple[str, dict]:
+    """Return (name, config block) for the given model, or the active one if None."""
     cfg = _load_config()
-    active_name = cfg["active"]
-    model_block = cfg["models"][active_name]
+    name = model_name or cfg["active"]
+    try:
+        return name, cfg["models"][name]
+    except KeyError:
+        raise KeyError(f"Model {name!r} is not defined in config/models.yaml") from None
+
+
+def get_llm(
+    thinking: bool = False,
+    suppress_thinking: bool = False,
+    model_name: str | None = None,
+) -> ChatOllama:
+    name, model_block = _resolve_model(model_name)
     kwargs: dict = dict(
-        model=active_name,
+        model=name,
         base_url=model_block["base_url"],
         temperature=model_block["temperature"],
         num_predict=model_block["max_tokens"],
     )
+    if model_block.get("context_window"):
+        kwargs["num_ctx"] = model_block["context_window"]
     if model_block.get("thinking"):
         if thinking:
             kwargs["reasoning"] = True
@@ -44,9 +58,23 @@ def get_active_model_name() -> str:
     return _load_config()["active"]
 
 
-def model_supports_thinking() -> bool:
+def list_available_models() -> list[str]:
+    """Model names offered in the in-chat picker (config/models.yaml order).
+
+    A model with `enabled: false` is hidden; the `active` model is always
+    included so the picker can never end up empty or without its default.
+    """
     cfg = _load_config()
-    return bool(cfg["models"][cfg["active"]].get("thinking", False))
+    active = cfg["active"]
+    return [
+        name for name, block in cfg["models"].items()
+        if block.get("enabled", True) or name == active
+    ]
+
+
+def model_supports_thinking(model_name: str | None = None) -> bool:
+    _, model_block = _resolve_model(model_name)
+    return bool(model_block.get("thinking", False))
 
 
 async def test_llm_connection() -> bool:

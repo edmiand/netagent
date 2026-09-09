@@ -12,9 +12,9 @@ from chainlit.context import local_steps
 from chainlit.data import get_data_layer
 from langchain_core.messages import HumanMessage
 
-from chainlit.input_widget import Switch
+from chainlit.input_widget import Select, Switch
 
-from agent.llm import get_active_model_name, model_supports_thinking
+from agent.llm import get_active_model_name, list_available_models, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from agent.approval import wrap_with_approval
@@ -164,9 +164,19 @@ def _build_widgets() -> list:
     use_reasoning = cl.user_session.get("use_model_reasoning", True)
     show_thinking = cl.user_session.get("show_thinking", True)
     memory_enabled = cl.user_session.get("memory_learning_enabled", False)
+    model_name = cl.user_session.get("model_name") or get_active_model_name()
 
     widgets = []
-    if model_supports_thinking():
+    available = list_available_models()
+    if len(available) > 1:
+        widgets.append(Select(
+            id="model_name",
+            label="Model",
+            description="Ollama model backing the agent. Switching rebuilds the agent for this chat only — config/models.yaml sets the default for new chats.",
+            values=available,
+            initial_value=model_name if model_name in available else available[0],
+        ))
+    if model_supports_thinking(model_name):
         widgets.append(Switch(
             id="use_model_reasoning",
             label="Use Model Reasoning",
@@ -233,25 +243,30 @@ async def on_chat_start():
     cl.user_session.set("mcp_ctx", mcp_ctx)
     cl.user_session.set("raw_tools", raw_tools)
 
+    model_name = get_active_model_name()
+    thinking_capable = model_supports_thinking(model_name)
     cl.user_session.set("human_approval_enabled", False)
-    cl.user_session.set("use_model_reasoning", True)
-    cl.user_session.set("show_thinking", True)
+    cl.user_session.set("model_name", model_name)
+    cl.user_session.set("use_model_reasoning", thinking_capable)
+    cl.user_session.set("show_thinking", thinking_capable)
     cl.user_session.set("memory_learning_enabled", False)
     tools = _build_tools(raw_tools)
 
-    agent = create_agent(tools, thinking=True, suppress_thinking=False)
+    agent = create_agent(
+        tools, thinking=thinking_capable, suppress_thinking=False, model_name=model_name
+    )
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
 
     branding = _load_branding()
-    model_name = get_active_model_name()
+    model_hint = "  ·  _switch in ⚙️ Settings_" if len(list_available_models()) > 1 else ""
     tool_names = "  ".join(
         f"{TOOL_ICONS.get(t.name, '🔧')} `{t.name}`" for t in tools
     )
     await _send(cl.Message(
         content=(
             f"**{branding['welcome_title']}**\n\n"
-            f"Model: `{model_name}`\n\n"
+            f"Model: `{model_name}`{model_hint}\n\n"
             f"**Tools:** {tool_names}"
         ),
         actions=_make_scenario_actions(),
@@ -278,15 +293,20 @@ async def on_debug_failure(action: cl.Action):
         await _run_agent(action.payload["prompt"])
 
 
-def _rebuild_agent(thinking: bool, use_reasoning: bool) -> bool:
-    """Rebuild the agent with the given thinking/reasoning flags. Returns False if session not ready."""
+def _rebuild_agent(thinking: bool, use_reasoning: bool, model_name: str | None = None) -> bool:
+    """Rebuild the agent with the given model + thinking/reasoning flags. Returns False if session not ready."""
     raw_tools = cl.user_session.get("raw_tools")
     if not raw_tools:
         return False
+    if model_name is None:
+        model_name = cl.user_session.get("model_name") or get_active_model_name()
     tools = _build_tools(raw_tools)
-    cl.user_session.set("agent", create_agent(tools, thinking=thinking, suppress_thinking=not use_reasoning))
+    cl.user_session.set("agent", create_agent(
+        tools, thinking=thinking, suppress_thinking=not use_reasoning, model_name=model_name
+    ))
     cl.user_session.set("show_thinking", thinking)
     cl.user_session.set("use_model_reasoning", use_reasoning)
+    cl.user_session.set("model_name", model_name)
     return True
 
 
@@ -307,6 +327,12 @@ async def on_settings_update(settings: dict):
         status = "enabled" if enabled else "disabled"
         await cl.Message(content=f"🔒 Human approval mode **{status}**.").send()
 
+    current_model = cl.user_session.get("model_name") or get_active_model_name()
+    new_model = settings.get("model_name", current_model)
+    if new_model not in list_available_models():
+        new_model = current_model
+    model_changed = new_model != current_model
+
     use_reasoning = settings.get("use_model_reasoning", True)
     show_thinking = settings.get("show_thinking", True)
 
@@ -314,20 +340,29 @@ async def on_settings_update(settings: dict):
     if not use_reasoning:
         show_thinking = False
 
+    # A model without `thinking: true` can neither reason nor stream thinking,
+    # regardless of the toggles (which _build_widgets hides for such a model).
+    if not model_supports_thinking(new_model):
+        use_reasoning = False
+        show_thinking = False
+
     reasoning_changed = use_reasoning != cl.user_session.get("use_model_reasoning", True)
     thinking_changed = show_thinking != cl.user_session.get("show_thinking", True)
 
-    if reasoning_changed or thinking_changed:
-        if _rebuild_agent(show_thinking, use_reasoning):
-            if reasoning_changed:
+    if model_changed or reasoning_changed or thinking_changed:
+        if _rebuild_agent(show_thinking, use_reasoning, model_name=new_model):
+            if model_changed:
+                await cl.Message(content=f"🔀 Model switched to **`{new_model}`** for this chat.").send()
+            elif reasoning_changed:
                 status_r = "enabled" if use_reasoning else "disabled"
                 await cl.Message(content=f"🧠 Model reasoning **{status_r}**.").send()
             elif thinking_changed:
                 status_t = "enabled" if show_thinking else "disabled"
                 await cl.Message(content=f"💭 Model thinking **{status_t}**.").send()
 
-    if reasoning_changed:
-        # show_thinking's disabled state depends on use_model_reasoning — refresh the widget
+    if model_changed or reasoning_changed:
+        # the thinking widgets' presence depends on the model; show_thinking's
+        # disabled state depends on use_model_reasoning — refresh the panel
         await cl.ChatSettings(_build_widgets()).send()
 
     memory_enabled = settings.get("memory_learning_enabled", False)

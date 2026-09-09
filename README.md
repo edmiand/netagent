@@ -194,6 +194,11 @@ Edit `config/models.yaml` and set `active` to your preferred cloud model:
 active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
 ```
 
+`active` is the default for every new chat. Users can also switch models
+mid-session from the ⚙️ Settings panel in the web UI (per-chat, no restart) —
+the picker lists every entry under `models:` except those marked
+`enabled: false`.
+
 ### 8. RAG knowledge base
 
 No manual step needed — `./netagent.sh start` (step 11) auto-builds
@@ -264,12 +269,19 @@ ollama pull nomic-embed-text          # embeddings model for the RAG tool
 ### Model — `config/models.yaml`
 
 ```yaml
-active: gemma4:31b-cloud   # ← change this line to switch models
+active: gemma4:31b-cloud   # ← default model for new chats
 ```
 
 Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`.  
 No GPU required — Ollama is used as a gateway only.  
-Restart Chainlit after changing.
+Restart Chainlit after changing `active` or the `models:` list.
+
+**In-chat model picker.** The web UI's ⚙️ Settings panel shows a **Model**
+dropdown whenever more than one model is available. Switching it rebuilds the
+agent for that chat only (no restart); `active` still governs new chats. Add
+`enabled: false` to a `models:` entry to hide it from the dropdown — `active`
+is always listed. Selecting a model without `thinking: true` hides the
+reasoning switches automatically.
 
 ### Embeddings — `config/models.yaml`
 

@@ -1,3 +1,13 @@
+# `active` is the default model for every new chat. Users can switch models
+# mid-session from the ⚙️ Settings panel in the web UI (per-chat, no restart).
+# The picker lists every model below except those with `enabled: false`;
+# `active` is always listed even if disabled. Editing this file needs an app
+# restart to take effect.
+#
+# context_window: model's context length in tokens, per its ollama.com page.
+#   Mapped to Ollama's num_ctx. For `-cloud` models this is advisory — the
+#   cloud host enforces the real limit; for local models it sizes the KV cache
+#   (and RAM use) directly.
 active: gemma4:31b-cloud
 
 models:
@@ -5,19 +15,34 @@ models:
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
+    context_window: 131072      # 128K — ollama.com/library/gpt-oss
+    thinking: true
     description: "Cloud OSS model via local Ollama"
 
   gemma4:31b-cloud:
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
+    context_window: 262144      # 256K — ollama.com/library/gemma4:31b-cloud
     thinking: true
     description: "Cloud Google model via local Ollama"
+
+  nemotron-3-ultra:cloud:
+    base_url: http://localhost:11434
+    temperature: 0
+    max_tokens: 4096
+    context_window: 1048576     # 1M — ollama.com/library/nemotron-3-ultra:cloud
+    thinking: true
+    description: "NVIDIA Nemotron-3-Ultra model via local Ollama"
 
   qwen2.5:7b:
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
+    context_window: 32768       # 32K — ollama.com/library/qwen2.5; full window
+                                # needs far more than the ~5GB below — lower it
+                                # if RAM-constrained
+    enabled: false   # hidden from the in-chat model picker; drop this line to offer it
     description: "Lighter local option — needs ~5GB RAM"
 
 embeddings:

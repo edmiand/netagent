@@ -46,7 +46,7 @@ _SPECIALISTS = [
 SPECIALIST_LABELS = {spec["name"]: spec["label"] for spec in _SPECIALISTS}
 
 
-def build_specialist_tools(tools: list) -> list[StructuredTool]:
+def build_specialist_tools(tools: list, model_name: str | None = None) -> list[StructuredTool]:
     """Wrap each specialist as a single dispatch tool for the supervisor agent.
 
     The supervisor invokes a specialist like any other tool; internally it runs
@@ -62,7 +62,7 @@ def build_specialist_tools(tools: list) -> list[StructuredTool]:
         if not subset:
             continue
         prompt_text = (_PROMPTS_DIR / spec["prompt_file"]).read_text()
-        sub_agent = create_react_agent(get_llm(), subset, prompt=prompt_text)
+        sub_agent = create_react_agent(get_llm(model_name=model_name), subset, prompt=prompt_text)
 
         async def _run(task: str, _agent=sub_agent) -> str:
             result = await _agent.ainvoke(
