@@ -57,7 +57,8 @@ _BRANDING_PATH = Path(__file__).parent / "config" / "branding.yaml"
 
 # Chainlit persists generated files (e.g. mermaid images) under .files/<session-id>/
 # and uses mkdir(exist_ok=True) without parents=True, so the parent must pre-exist.
-(Path(__file__).parent / ".files").mkdir(exist_ok=True)
+_FILES_DIR = Path(__file__).parent / ".files"
+_FILES_DIR.mkdir(exist_ok=True)
 
 
 async def _send(msg: cl.Message) -> cl.Message:
@@ -658,6 +659,11 @@ async def _run_agent(user_input: str):
     if images:
         current_msg.content = clean_content
         await current_msg.update()
+        # Defensive re-create: Chainlit's own shutdown path (or a racing
+        # process restart) can rmtree this directory out from under a still
+        # -running server — a one-time mkdir at import isn't enough (see
+        # CLAUDE.md's mermaid gotcha).
+        _FILES_DIR.mkdir(exist_ok=True)
         await _send(cl.Message(content="", elements=images))
     else:
         await current_msg.update()
