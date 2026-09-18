@@ -11,7 +11,7 @@
 active: gemma4:31b-cloud
 
 models:
-  gpt-oss:20b-cloud:
+  gpt-oss:120b-cloud:
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
