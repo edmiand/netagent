@@ -1,7 +1,8 @@
 """Chunk knowledge_base/*.md, embed via Ollama, persist to a local Chroma store.
 
 Rerun this after editing/adding any file under knowledge_base/ to refresh
-the persisted vectors used by agent/tools/rag.py.
+the persisted vectors used by agent/tools/rag.py. Each run replaces the
+collection, so reruns never duplicate chunks.
 """
 
 from pathlib import Path
@@ -33,9 +34,17 @@ def main() -> None:
     print(f"Loaded {len(md_files)} docs → {len(documents)} chunks")
 
     _PERSIST_DIR.mkdir(parents=True, exist_ok=True)
+    embeddings = get_embeddings()
+    # from_documents appends to an existing collection, so a rerun would
+    # duplicate every chunk — drop the old collection and rebuild from scratch.
+    Chroma(
+        collection_name=_COLLECTION_NAME,
+        embedding_function=embeddings,
+        persist_directory=str(_PERSIST_DIR),
+    ).delete_collection()
     Chroma.from_documents(
         documents=documents,
-        embedding=get_embeddings(),
+        embedding=embeddings,
         collection_name=_COLLECTION_NAME,
         persist_directory=str(_PERSIST_DIR),
     )

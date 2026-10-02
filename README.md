@@ -64,7 +64,7 @@ The sixth, `ue-incident-notifications.md`, is NetAgent's own operational policy 
 ```bash
 .venv/bin/python scripts/build_knowledge_base.py
 ```
-This chunks the docs, embeds them via a local `nomic-embed-text` Ollama model, and persists vectors to `data/chroma/` (gitignored, regenerated locally — not committed).
+This chunks the docs, embeds them via a local `nomic-embed-text` Ollama model, and persists vectors to `data/chroma/` (gitignored, regenerated locally — not committed). Each run replaces the collection, so rerunning never duplicates chunks — but restart the app afterwards (`./netagent.sh restart`), since a running app keeps a handle to the old collection.
 
 ---
 
