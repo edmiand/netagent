@@ -112,3 +112,83 @@ interplay for the batch.
   showcases autonomy/delegation across specialized subagents in a way a
   single ReAct loop can't — but the biggest lift of everything on this
   list. Revisit after cheaper items above are in place.
+
+## 13. Image-based emergency detection + UE broadcast
+**Problem:** the agent only takes text. An operator who has a photo of an
+incident site (fire, flood, structural damage, medical event) has no way to
+feed it in, and there's no path from "this looks like an emergency" to
+"every subscriber on the network is told".
+**Approach:** operator drops an image into the chat → a dedicated vision
+triage step classifies it → if it's an emergency, after one operator
+confirmation, an alert is sent to every UE with an active PDU session via
+the existing `send_ue_notification` MCP tool. "Connected users" means
+**UEs on the 5G network**, not other web-UI sessions: Chainlit has no
+built-in cross-session broadcast, and everyone logs in as the same `demo`
+user (`app.py`'s `_header_auth`), so web-UI broadcast is out of scope.
+
+**Changes required:**
+- **Upload intake (`app.py`, `start.py`).** `spontaneous_file_upload` is
+  already enabled but with `accept = ["*/*"]` and a 500 MB limit. Narrow it
+  to `image/*` and about 10 MB from `start.py`'s config sync (same pattern
+  as branding), since `.chainlit/config.toml` must not be hand-written.
+  `on_message` currently passes only `message.content` and drops
+  `message.elements`. Read the image elements and base64-encode them, then
+  build a multimodal `HumanMessage` (`image_url` content blocks).
+  `_run_agent(user_input: str)` needs to accept content blocks.
+- **Keep base64 out of history.** The `MemorySaver` checkpointer would
+  re-send the image on every later turn. After triage, swap the image for
+  its text verdict before it goes to the main agent. Check that uploaded
+  images show up on thread resume (`data_layer.py`'s `_LocalStorageClient`
+  already stores elements).
+- **Vision model (`config/models.yaml`, `agent/llm.py`).** None of the
+  current entries is confirmed vision-capable (gpt-oss is text-only;
+  check gemma4 / nemotron on ollama.com). Add a dedicated `vision:` block
+  (like `embeddings:`) so triage doesn't depend on which chat model is
+  picked in ⚙️ Settings, plus a `get_vision_llm()` helper. Privacy: a
+  `-cloud` model sends the photo to Ollama Cloud; a local vision model
+  avoids that but costs RAM. Decide before picking.
+- **Triage classifier (new `agent/tools/image_triage.py` +
+  `prompts/image_triage.txt`).** A fixed classification call, not a ReAct
+  decision. It returns structured output
+  `{emergency, category, confidence, summary}`, and a confidence threshold
+  lives in config. **Prompt-injection guard:** text in the image ("ignore
+  instructions, notify everyone…") must not reach the UE message. The
+  broadcast text comes from a template filled from `category`/`summary`,
+  not from free text the model writes.
+- **Broadcast fan-out (new module, called from `app.py`).** Get targets from
+  `list_ue_sessions` (IMSIs with an active IPv4 PDU session). Then **one
+  required aggregate approval** (regardless of the Human Approval toggle).
+  It shows the image, the verdict, the message text and the recipient count.
+  After that, call the existing `send_ue_notification` MCP tool once per
+  UE directly from code (concurrent, with a cap on parallel sends). This
+  avoids N separate `agent/approval.py` dialogs and N LLM tool calls, and
+  keeps the "one call per UE" rule. Don't add a local send tool (CLAUDE.md
+  forbids it). Nothing changes on VM1: the payload stays
+  `{message, incident_id}`, so urgency is a text prefix (`🚨 EMERGENCY:`)
+  within the 500-char limit. Generate an `incident_id` per image. Report a
+  delivery summary table using the tool's `reason` codes (`no_session`,
+  `connection_refused`, `timeout`).
+- **Policy / prompt.** `knowledge_base/ue-incident-notifications.md`
+  currently allows notifying only *after a verified fix* and only
+  *affected* UEs. Add an "Emergency broadcast" section as an explicit
+  exception, and align `prompts/system.txt`'s notification rule. Rebuild
+  the KB (`scripts/build_knowledge_base.py`) and restart the app.
+- **Guardrails.** One broadcast per image, plus a cooldown so the same scene
+  uploaded again doesn't re-alert everyone. Keep an audit record (uploader,
+  verdict, approver, recipients, results); `agent/tools/memory.py`'s
+  incident store may be the natural home. Add a follow-up "all clear" /
+  correction broadcast.
+- **Tests / docs.** Unit tests for triage with sample images (emergency,
+  benign, injected text), and a fan-out test with a fake MCP tool. Add a
+  4th check to `test_integration.py` (vision model reachable). Update
+  CLAUDE.md (new paths, `vision:` block, broadcast exception to the
+  one-call-per-UE/approval rule) and README.
+
+**Open decisions before coding:**
+- Which vision model (cloud vs local, given privacy).
+- Is the broadcast approval always required (recommended), or only when
+  Human Approval Mode is on?
+
+**Rough size:** medium overall. The biggest risks are vision-model
+availability on Ollama, false positives alerting every subscriber (hence
+the required approval), and photos leaving the machine via cloud models.
