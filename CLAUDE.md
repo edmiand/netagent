@@ -26,6 +26,8 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - agent/tools/release_check.py — local (non-MCP) `check_open5gs_release_info` tool,
   Tavily-backed release/advisory lookup
 - knowledge_base/*.md — RAG source docs; each cites its official Open5GS documentation source URL
+  (exception: ue-incident-notifications.md is project-internal policy and says so)
+- scripts/ue_notify_listener.py — UE-side receiver for send_ue_notification (stdlib only)
 - scripts/build_knowledge_base.py — auto-run by netagent.sh start/restart if data/chroma/ is
   missing; rerun manually after editing knowledge_base/*.md to refresh a stale index
 - app.py              — Chainlit entry point
@@ -66,6 +68,21 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - open5gs_version        runs `-v` on a compiled open5gs-*d binary (read-only, safe
   regardless of core state); returns {tag, commits_since_tag, commit_hash, raw, ...} —
   feed straight into check_open5gs_release_info
+- send_ue_notification   push a short text to a UE over its own PDU session: VM1 resolves
+  the IMSI → current UE IPv4 via SMF and POSTs {"message", "incident_id"} to
+  http://<ue_ip>:9000/notify. Write action — one call per UE, goes through Human
+  Approval Mode like every tool. Sending happens on VM1 only — do NOT add a local
+  NetAgent tool for it. When to send is in knowledge_base/ue-incident-notifications.md;
+  prompts/system.txt has a generic one-call-per-UE rule but does not name the tool.
+
+## UE notification listener (scripts/ue_notify_listener.py)
+- Runs on the UERANSIM host (here: VM2, uesimtun0) — receiver for send_ue_notification
+- .venv/bin/python scripts/ue_notify_listener.py [-i uesimtun0] [-p 9000]
+- Waits for the interface + IPv4, binds that address only (never 0.0.0.0), so it is
+  reachable only through the PDU session. POST /notify with JSON {message, incident_id}
+  → prints a timestamped line, 200 + JSON ack; anything else → 4xx. One instance per
+  UE interface; Ctrl-C exits. Binds the IP present at startup — restart it if the UE
+  re-attaches with a new address.
 
 ## Open5GS paths on VM1 (read-only reference)
 - Logs:    /home/dmandrey/open5gs/install/var/log/open5gs/<nf>.log

@@ -12,6 +12,7 @@ venv/
 .chainlit.pid
 .files/
 chainlit.log
+ue_notify_listener.log
 chat_history.db
 data/chroma/
 data/memory_store/
