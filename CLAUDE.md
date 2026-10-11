@@ -25,6 +25,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - agent/tools/rag.py  — local (non-MCP) `search_knowledge_base` tool, backed by a Chroma store
 - agent/tools/release_check.py — local (non-MCP) `check_open5gs_release_info` tool,
   Tavily-backed release/advisory lookup
+- agent/tools/hedera.py — local (non-MCP) `hcs_submit_message` / `hcs_read_message` tools,
+  Hedera Consensus Service audit trail; config/hedera.yaml (`enabled`, network, mirror URL,
+  fixed topic_id); details and live-test results in HEDERA.md
 - knowledge_base/*.md — RAG source docs; each cites its official Open5GS documentation source URL
   (exception: ue-incident-notifications.md is project-internal policy and says so)
 - scripts/ue_notify_listener.py — UE-side receiver for send_ue_notification (stdlib only)
@@ -32,7 +35,8 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   missing; rerun manually after editing knowledge_base/*.md to refresh a stale index
 - app.py              — Chainlit entry point
 - prompts/system.txt  — agent system prompt
-- test_integration.py — 3-check integration test (LLM reachable · MCP tools · round-trip)
+- test_integration.py — 3-check integration test (LLM reachable · MCP tools · round-trip),
+  plus an optional 4th HCS round-trip check that is skipped while config/hedera.yaml is disabled
 
 > **Deployment:** see [README.md](README.md) for full fresh-VM setup instructions.
 
@@ -49,6 +53,14 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   free-text query composed by the model. Requires TAVILY_API_KEY in .env (see
   .env.example); degrades gracefully with a clear message if unset. Merged
   into the same tool list as search_knowledge_base in app.py's _build_tools().
+- hcs_submit_message / hcs_read_message  Hedera Consensus Service audit trail
+  (agent/tools/hedera.py). Only added to the tool list when config/hedera.yaml has
+  `enabled: true` (committed as true; set false to hide them). Needs HEDERA_OPERATOR_ID / HEDERA_OPERATOR_KEY
+  (DER-encoded key) in .env. Topic is fixed in config — the model never picks one.
+  Without the .env credentials the tools still appear but return a clear error.
+  Submit refuses messages that look like an IMSI or IPv4 (topic is public and
+  permanent) and anything over 1024 bytes. The SDK is synchronous, so submits run in
+  asyncio.to_thread; reads poll the mirror node for up to 10s (it lags ~1–3s).
 
 ## MCP tools available on VM1
 - nf_lifecycle          start/stop/restart/status any Open5GS NF
@@ -98,7 +110,8 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - Key deps: chainlit, langgraph, langchain-mcp-adapters, mcp, langchain-ollama, httpx,
             pyyaml, python-dotenv, sqlalchemy + aiosqlite (chat history persistence,
             data_layer.py), langchain-chroma, chromadb, langchain-text-splitters
-            (RAG knowledge-base tool), tavily-python (release/advisory check tool)
+            (RAG knowledge-base tool), tavily-python (release/advisory check tool),
+            hiero-sdk-python (Hedera HCS tools; pinned exactly — Pre-Alpha)
 
 ## RAG / embeddings gotcha
 - Chat models are Ollama Cloud (no local pull needed), but the embeddings model

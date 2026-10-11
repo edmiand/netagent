@@ -7,11 +7,13 @@ Legend: **[V]** verified by running it · **[D]** taken from docs/source, not ru
 
 ## 1. Status
 
-- SDK install on this ARM64 VM: **[V]** (throwaway venv; not yet in the repo's `.venv`)
+- SDK install on this ARM64 VM: **[V]** — in the repo's `.venv` via `pyproject.toml`, no conflicts
 - Credentials in `.env`: **[V]** — `HEDERA_OPERATOR_ID` / `HEDERA_OPERATOR_KEY` set (ED25519, DER)
 - Live testnet write (create topic, submit message): **[V]** (2026-10-11)
 - Mirror node read-back: **[V]** — all messages decoded and matched
 - Submit-to-readable latency: **[V]** — ~2.5s average, see §9
+- NetAgent tools (`agent/tools/hedera.py`): **[V]** implemented and tested outside the UI;
+  `enabled: true` in the repo; verified end to end in the Chainlit UI, including Human Approval Mode
 - Topic ID: **[V]** `0.0.10994808` (testnet, admin key = current ED25519 operator key) —
   https://hashscan.io/testnet/topic/0.0.10994808
 
@@ -37,8 +39,9 @@ python3 -m venv <scratch>/hedera_venv
 
 For the repo itself, add `hiero-sdk-python` to `pyproject.toml` and run
 `.venv/bin/pip install -e .`. Do not hand-pin transitive versions; let pip resolve.
-Dependency conflicts with the repo's existing stack (langchain, chromadb, chainlit)
-are **[U]** — check with `pip install -e .` in the real `.venv` before relying on it.
+**[V]** `pip install -e .` with `hiero-sdk-python==0.3.0` only *added* packages (eth-*,
+cytoolz, toolz, parsimonious, pycryptodome) — no existing package changed version, and
+`pip check` is clean.
 
 ## 3. Credentials
 
@@ -137,37 +140,41 @@ Config rule (CLAUDE.md): read the mirror URL from a config file, not hardcoded i
 Consequence for Chainlit (asyncio event loop, `app.py`):
 - Calling `tx.execute(client)` directly inside an `async` handler **blocks the whole
   Chainlit server** for that time. **Do not do this.**
-- Wrap calls in `await asyncio.to_thread(...)` (or `loop.run_in_executor`). **[U]** until tested
-  inside Chainlit.
+- Wrap calls in `await asyncio.to_thread(...)`. **[V]** outside Chainlit: a 50ms asyncio ticker
+  stalled at most 79ms during a submit + read; the running app stayed responsive in UI use.
 - Reuse one `Client` per process. Creating a client per call re-opens gRPC channels. **[D]**
 - Mirror REST reads: use `httpx.AsyncClient` (already a repo dependency). No thread needed. **[D]**
 
-## 7. Feature integration plan (checklist, not done)
+## 7. Feature integration plan (checklist)
 
 Follows the existing local-tool pattern (`agent/tools/rag.py`, `agent/tools/release_check.py`):
 
-1. `pyproject.toml` — add `hiero-sdk-python` (pin the exact version, see §8). Run `.venv/bin/pip install -e .`.
-2. `config/hedera.yaml` (new) — `network: testnet`, `mirror_base_url`, `topic_id: 0.0.10994808`
-   (or empty = create on first use), `enabled: false` default. No URLs in Python code.
-3. `.env.example` — document `HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY` (DER). Real values stay in `.env`.
-4. `agent/tools/hedera.py` (new) — two local tools:
+1. ✅ `pyproject.toml` — add `hiero-sdk-python` (pin the exact version, see §8). Run `.venv/bin/pip install -e .`.
+2. ✅ `config/hedera.yaml` (new) — `network: testnet`, `mirror_base_url`, `topic_id: 0.0.10994808`,
+   `enabled: true` (set false to hide the tools). No URLs in Python code. Create-on-first-use was dropped: the app
+   never writes config back, so an empty `topic_id` just makes the tools return an error.
+3. ✅ `.env.example` — document `HEDERA_OPERATOR_ID`, `HEDERA_OPERATOR_KEY` (DER). Real values stay in `.env`.
+4. ✅ `agent/tools/hedera.py` (new) — two local tools:
    - `hcs_submit_message(message: str)` — thread-wrapped submit, returns
      `{topic_id, sequence_number, status}` (MCP-style structured dict, per CLAUDE.md).
    - `hcs_read_message(sequence_number: int)` — async httpx mirror GET, returns decoded JSON.
      Must handle 404 "not on the mirror yet" (expected for ~1–3s after submit).
    Keep the tool surface narrow (no free-form topic ID from the model unless intended).
-5. `app.py` `_build_tools()` — append the new tools only when `hedera.yaml` `enabled: true`
-   and credentials are present. Degrade with a clear message if not (same as TAVILY_API_KEY).
+   Submit also refuses IMSI-/IPv4-looking text (public, permanent topic) and >1024 bytes.
+5. ✅ `app.py` `_build_tools()` — append the new tools only when `hedera.yaml` `enabled: true`
+   (credentials missing → the tools return a clear error, same as TAVILY_API_KEY).
 6. Approval: these are write actions. They go through Human Approval Mode automatically
-   via the existing wrapper in `agent/approval.py`. Verify this in the UI. **[U]**
-7. `prompts/system.txt` — only if the agent needs a rule about when to write to HCS.
+   via the existing wrapper in `agent/approval.py` — approve/deny prompt shown for both
+   tools in the UI **[V]**. An unanswered prompt auto-denies after 120s, so a submit →
+   read-back request can stall at the second prompt if nobody clicks it.
+7. ⏭ Not done — `prompts/system.txt` only if the agent needs a rule about when to write to HCS.
    Tool schemas come from the tool definitions, not the prompt (CLAUDE.md).
-8. `test_integration.py` — optional fourth check (HCS round-trip), skipped if unconfigured.
+8. ✅ `test_integration.py` — optional fourth check (HCS round-trip), skipped if unconfigured.
 9. Chainlit UI — tool calls already stream as Steps; no UI work needed.
 
 ## 8. Open questions / risks
 
-- **[U]** Does the SDK's protobuf/grpcio pin collide with anything in the repo's `.venv`?
+- **[V]** No dependency collision with the repo's `.venv` (§2).
 - **[V]** Cost: topic create + 5 submits ≈ 0.22 testnet HBAR, so the 1000 HBAR from the
   portal covers thousands of messages.
 - **[U]** Whether the SDK's `TopicMessageSubmitTransaction` raises or returns non-SUCCESS
@@ -193,7 +200,10 @@ Follows the existing local-tool pattern (`agent/tools/rag.py`, `agent/tools/rele
 | 5-message submit + mirror read, ECDSA account | All SUCCESS, all matched; receipt 0.63s; mirror 1.86–3.56s (avg 2.31s); cost 0.22 HBAR | [V] |
 | Live topic create, ED25519 account (2026-10-11) | SUCCESS, `0.0.10994808`, 0.88s | [V] |
 | 5-message submit + mirror read, ED25519 account | All SUCCESS, all matched; receipt 0.62–0.63s; mirror 1.62–3.82s (avg 2.58s); cost 0.22 HBAR | [V] |
-| `asyncio.to_thread` wrapping inside Chainlit | Not run | [U] |
+| `agent/tools/hedera.py` in repo `.venv` (2026-10-11) | Guards rejected IPv4 / IMSI / 1100-byte messages; submit seq 6 SUCCESS (1.09s incl. client setup); read-back matched at 3.59s; unknown seq → `found: false` after 10s | [V] |
+| Event loop during tool submit + read | Max 79ms stall on a 50ms ticker | [V] |
+| `test_integration.py` Test 4 | SKIP when disabled; PASS (seq 7) when temporarily enabled | [V] |
+| Tools inside the running Chainlit app (2026-10-11) | Agent submitted "Health snapshot reviewed, all NFs up." → seq 8 SUCCESS; read back seq 8 with matching text; approval prompt shown and honored for both tools | [V] |
 | Network-error failure path | Not run | [U] |
 
 The live tests used an ad-hoc script (create topic → 5 submits → poll mirror per message

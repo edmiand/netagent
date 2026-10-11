@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import uuid
 
 from langchain_core.messages import HumanMessage
 
@@ -78,6 +79,33 @@ async def test_agent_round_trip() -> bool:
         return False
 
 
+async def test_hcs_round_trip() -> bool | None:
+    print("\n[Test 4] Hedera HCS round trip (optional)")
+    from dotenv import load_dotenv
+    from agent.tools import hedera
+
+    load_dotenv()
+    if not hedera.is_enabled():
+        print("  SKIP — config/hedera.yaml has enabled: false")
+        return None
+    try:
+        text = f"netagent integration test {uuid.uuid4()}"
+        sent = await hedera.hcs_submit_message.ainvoke({"message": text})
+        if sent.get("status") != "SUCCESS":
+            print(f"  FAIL — submit returned {sent}")
+            return False
+        print(f"  Submitted seq {sent['sequence_number']} to {sent['topic_id']}")
+        got = await hedera.hcs_read_message.ainvoke({"sequence_number": sent["sequence_number"]})
+        if got.get("message") == text:
+            print("  PASS")
+            return True
+        print(f"  FAIL — read back {got}")
+        return False
+    except Exception as exc:
+        print(f"  FAIL — {exc}")
+        return False
+
+
 async def main():
     print("=" * 50)
     print("5G Demo App — Integration Tests")
@@ -87,7 +115,9 @@ async def main():
         await test_llm_connection(),
         await test_mcp_tools_load(),
         await test_agent_round_trip(),
+        await test_hcs_round_trip(),
     ]
+    results = [r for r in results if r is not None]  # drop skipped checks
 
     passed = sum(results)
     total = len(results)

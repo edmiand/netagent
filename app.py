@@ -23,6 +23,7 @@ from agent.subagents import SPECIALIST_LABELS
 from agent.tools.rag import search_knowledge_base
 from agent.tools.release_check import check_open5gs_release_info
 from agent.tools.memory import recall_similar_incidents, record_incident
+from agent.tools import hedera
 from data_layer import make_data_layer
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
@@ -93,6 +94,8 @@ TOOL_ICONS = {
     "check_open5gs_release_info": "🌐",
     "recall_similar_incidents": "🧩",
     "record_incident": "🧠",
+    "hcs_submit_message": "⛓️",
+    "hcs_read_message": "🔗",
     "investigate_connectivity": "📶",
     "investigate_nf_health": "🩺",
 }
@@ -137,6 +140,8 @@ def _build_tools(raw_tools: list) -> list:
     extra_tools = [search_knowledge_base, check_open5gs_release_info]
     if cl.user_session.get("memory_learning_enabled", False):
         extra_tools += [recall_similar_incidents, record_incident]
+    if hedera.is_enabled():
+        extra_tools += [hedera.hcs_submit_message, hedera.hcs_read_message]
     return wrap_with_approval(raw_tools + extra_tools)
 
 

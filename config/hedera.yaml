@@ -1,0 +1,16 @@
+# Hedera Consensus Service (HCS) audit-trail tools — see HEDERA.md.
+# Credentials (HEDERA_OPERATOR_ID / HEDERA_OPERATOR_KEY, DER-encoded key) live in .env.
+
+# false → the hcs_* tools are not offered to the agent at all.
+# true without HEDERA_* creds in .env → the tools appear but return a 'not configured' error.
+enabled: true
+
+# Only "testnet" has been verified.
+network: testnet
+
+# Public mirror node REST API for read-back (no auth).
+mirror_base_url: https://testnet.mirrornode.hedera.com
+
+# Topic the agent writes to. Fixed here on purpose — the model never picks a topic.
+# Created during the live test on 2026-10-11 (admin key = current ED25519 operator key).
+topic_id: "0.0.10994808"

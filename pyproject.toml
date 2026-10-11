@@ -21,6 +21,7 @@ dependencies = [
     "chromadb>=0.5.0",
     "langchain-text-splitters>=0.3.0",
     "tavily-python>=0.5.0",
+    "hiero-sdk-python==0.3.0",  # Pre-Alpha, API churns between minors — see HEDERA.md
 ]
 
 [project.optional-dependencies]
