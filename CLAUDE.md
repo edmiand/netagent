@@ -175,6 +175,12 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 ## Agent behaviour (system prompt rules)
 - Destructive/lifecycle NF operations (start/stop/restart): EXACTLY ONE tool call per
   response, then stop and report — never chained
+- Audit trail (only when the hcs_* tools are enabled): the agent writes one short HCS entry
+  after each successful change (NF lifecycle, subscriber create/update/delete, UE notification),
+  one summary entry per batch, one per confident RCA, and whenever the user asks. Never for
+  reads, health checks, denied/failed actions. The prompt names no tool (phrased "if an
+  audit-trail write tool is available"), and this entry is the one allowed extra call after a
+  lifecycle operation. With Human Approval Mode on, it costs one more approval click.
 - Read-only/bulk requests (explicit batch asks) and the RCA workflow MAY chain multiple
   tool calls autonomously in one turn — this is intentional, not a violation of the rule above
 - Never restarts/stops/starts a NF unless user explicitly asks
