@@ -96,6 +96,8 @@ TOOL_ICONS = {
     "record_incident": "🧠",
     "hcs_submit_message": "⛓️",
     "hcs_read_message": "🔗",
+    "hcs_list_recent": "📜",
+    "hcs_verify_report": "🔏",
     "investigate_connectivity": "📶",
     "investigate_nf_health": "🩺",
 }
@@ -141,13 +143,14 @@ def _build_tools(raw_tools: list) -> list:
     if cl.user_session.get("memory_learning_enabled", False):
         extra_tools += [recall_similar_incidents, record_incident]
     if hedera.is_enabled():
-        extra_tools += [hedera.hcs_submit_message, hedera.hcs_read_message]
+        extra_tools += [hedera.hcs_submit_message, hedera.hcs_read_message,
+                        hedera.hcs_list_recent, hedera.hcs_verify_report]
     return wrap_with_approval(raw_tools + extra_tools)
 
 
 def _make_scenario_actions() -> list[cl.Action]:
     """Return fresh Action instances each call so forId is always None on first use."""
-    return [
+    actions = [
         cl.Action(
             name="health_snapshot",
             label="🏥 Health Snapshot",
@@ -164,6 +167,13 @@ def _make_scenario_actions() -> list[cl.Action]:
             payload={"prompt": "A subscriber cannot attach to the 5G core. Investigate the root cause: check NF health, tail logs for any degraded or down functions, read their config if the logs are ambiguous, then tell me exactly what is wrong and what to do to fix it."},
         ),
     ]
+    if hedera.is_enabled():
+        actions.append(cl.Action(
+            name="audit_trail",
+            label="📜 Audit Trail",
+            payload={"prompt": "Show the 10 most recent audit trail entries."},
+        ))
+    return actions
 
 
 def _build_widgets() -> list:
@@ -303,6 +313,37 @@ async def on_watch_attach(action: cl.Action):
 async def on_debug_failure(action: cl.Action):
     if not cl.user_session.get("read_only"):
         await _run_agent(action.payload["prompt"])
+
+
+@cl.action_callback("audit_trail")
+async def on_audit_trail(action: cl.Action):
+    if not cl.user_session.get("read_only"):
+        await _run_agent(action.payload["prompt"])
+
+
+@cl.action_callback("fingerprint_report")
+async def on_fingerprint_report(action: cl.Action):
+    """Hash the exact report text shown in the UI and record it on HCS.
+
+    Done in code, not by the agent: a model can't compute sha256, and having it
+    re-type the report would change the bytes. The click is the approval.
+    """
+    if cl.user_session.get("read_only"):
+        return
+    await action.remove()  # one fingerprint per report
+    async with cl.Step(name="🔏 fingerprint_report", type="tool") as step:
+        result = await hedera.fingerprint_report(action.payload["report"])
+        step.output = json.dumps(result, indent=2)
+    if "error" in result or result.get("status") != "SUCCESS":
+        await _send(cl.Message(content=f"❌ **Fingerprint failed:** {result.get('error') or result.get('status')}"))
+        return
+    link = f" · [view on explorer]({result['explorer_url']})" if result.get("explorer_url") else ""
+    await _send(cl.Message(content=(
+        f"🔏 **Report fingerprinted** as audit trail entry **#{result['sequence_number']}**{link}\n\n"
+        f"SHA-256 `{result['sha256']}`\n\n"
+        f"Saved copy: `{result['report_path']}`. Any later change to that file will fail "
+        f"verification — ask *\"Verify report entry {result['sequence_number']}\"*."
+    )))
 
 
 def _rebuild_agent(thinking: bool, use_reasoning: bool, model_name: str | None = None) -> bool:
@@ -663,6 +704,17 @@ async def _run_agent(user_input: str):
     images, clean_content = await _render_mermaid_diagrams(current_msg.content)
     if images:
         current_msg.content = clean_content
+
+    # RCA reports (the prompt mandates the "**Root cause:**" heading) can be
+    # fingerprinted on HCS. Payload is the final text exactly as displayed.
+    if hedera.is_enabled() and "**Root cause:**" in current_msg.content:
+        current_msg.actions.append(cl.Action(
+            name="fingerprint_report",
+            label="🔏 Fingerprint report",
+            payload={"report": current_msg.content},
+        ))
+
+    if images:
         await current_msg.update()
         # Defensive re-create: Chainlit's own shutdown path (or a racing
         # process restart) can rmtree this directory out from under a still

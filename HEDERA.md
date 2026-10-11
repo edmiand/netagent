@@ -171,6 +171,10 @@ Follows the existing local-tool pattern (`agent/tools/rag.py`, `agent/tools/rele
    Tool schemas come from the tool definitions, not the prompt (CLAUDE.md).
 8. ✅ `test_integration.py` — optional fourth check (HCS round-trip), skipped if unconfigured.
 9. Chainlit UI — tool calls already stream as Steps; no UI work needed.
+10. ✅ Demo additions (2026-10-11): `hcs_list_recent` + 📜 Audit Trail button; `explorer_url`
+    (HashScan topic link) in tool results via `explorer_base_url`; 🔏 Fingerprint report
+    button on RCA replies (SHA-256 in code, copy in `data/reports/<sha256>.md`) and
+    `hcs_verify_report` to detect later edits. See HEDERA_DEMO.md.
 
 ## 8. Open questions / risks
 
@@ -204,6 +208,7 @@ Follows the existing local-tool pattern (`agent/tools/rag.py`, `agent/tools/rele
 | Event loop during tool submit + read | Max 79ms stall on a 50ms ticker | [V] |
 | `test_integration.py` Test 4 | SKIP when disabled; PASS (seq 7) when temporarily enabled | [V] |
 | Tools inside the running Chainlit app (2026-10-11) | Agent submitted "Health snapshot reviewed, all NFs up." → seq 8 SUCCESS; read back seq 8 with matching text; approval prompt shown and honored for both tools | [V] |
+| List / fingerprint / verify (2026-10-11) | `hcs_list_recent(3)` newest-first with UTC times; limit 500 clamped; fingerprint → seq 9; verify ✅; one-char edit → ❌ with differing hash; deleted copy → clear error; non-fingerprint entry → clear error. Model picked the right tool for "show recent entries" / "verify report entry 9" | [V] |
 | Network-error failure path | Not run | [U] |
 
 The live tests used an ad-hoc script (create topic → 5 submits → poll mirror per message

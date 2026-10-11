@@ -11,6 +11,10 @@ network: testnet
 # Public mirror node REST API for read-back (no auth).
 mirror_base_url: https://testnet.mirrornode.hedera.com
 
+# Public block explorer; tool results link to <explorer_base_url>/topic/<topic_id>.
+# Remove to omit links.
+explorer_base_url: https://hashscan.io/testnet
+
 # Topic the agent writes to. Fixed here on purpose — the model never picks a topic.
 # Created during the live test on 2026-10-11 (admin key = current ED25519 operator key).
 topic_id: "0.0.10994808"

@@ -16,6 +16,7 @@ ue_notify_listener.log
 chat_history.db
 data/chroma/
 data/memory_store/
+data/reports/
 prompts/*.swp
 prompts/system.txt_v*
 config/mcp.yaml

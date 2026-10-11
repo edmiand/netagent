@@ -25,9 +25,11 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - agent/tools/rag.py  — local (non-MCP) `search_knowledge_base` tool, backed by a Chroma store
 - agent/tools/release_check.py — local (non-MCP) `check_open5gs_release_info` tool,
   Tavily-backed release/advisory lookup
-- agent/tools/hedera.py — local (non-MCP) `hcs_submit_message` / `hcs_read_message` tools,
+- agent/tools/hedera.py — local (non-MCP) `hcs_submit_message` / `hcs_read_message` /
+  `hcs_list_recent` / `hcs_verify_report` tools + `fingerprint_report()` (UI button only),
   Hedera Consensus Service audit trail; config/hedera.yaml (`enabled`, network, mirror URL,
-  fixed topic_id); details and live-test results in HEDERA.md
+  explorer URL, fixed topic_id); details and live-test results in HEDERA.md
+- HEDERA_DEMO.md — ~7-minute demo script for the audit-trail feature
 - knowledge_base/*.md — RAG source docs; each cites its official Open5GS documentation source URL
   (exception: ue-incident-notifications.md is project-internal policy and says so)
 - scripts/ue_notify_listener.py — UE-side receiver for send_ue_notification (stdlib only)
@@ -61,6 +63,14 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   Submit refuses messages that look like an IMSI or IPv4 (topic is public and
   permanent) and anything over 1024 bytes. The SDK is synchronous, so submits run in
   asyncio.to_thread; reads poll the mirror node for up to 10s (it lags ~1–3s).
+  hcs_list_recent (newest N, max 25) and hcs_verify_report are reads. Results carry
+  `explorer_url` (HashScan topic page) when config sets `explorer_base_url`.
+- Report fingerprinting: RCA replies (detected by the mandated "**Root cause:**" heading) get a
+  🔏 Fingerprint report button. app.py's callback hashes the exact displayed text in code
+  (never the model — it can't hash, and re-typing changes bytes), saves it to
+  data/reports/<sha256>.md (gitignored), and submits "RCA report sha256:<hex>". The click is
+  the approval, so it bypasses the Human Approval wrapper. hcs_verify_report(seq) re-hashes
+  the saved file against the ledger — editing or deleting that file fails verification.
 
 ## MCP tools available on VM1
 - nf_lifecycle          start/stop/restart/status any Open5GS NF
@@ -166,11 +176,13 @@ All tool calls stream visibly as Steps in the Chainlit UI.
   Run once per fresh install/VM (README step 10); not committed to git (it's a
   per-machine unit file under ~/.config/systemd/user/, not repo state).
 
-## Demo scenarios (3 action buttons on every message)
+## Demo scenarios (3 action buttons on every message, +📜 Audit Trail when Hedera is enabled)
 - Health Snapshot: calls system_health_snapshot, reports NF status table with emojis
 - Watch Subscriber Attach: calls list_ue_sessions, shows registered UEs and PDU sessions
 - Debug Attach Failure: runs the full RCA chain (health → logs → config → sessions →
   subscriber checks), reports Root Cause / Evidence / Recommended Action
+- Audit Trail (only when config/hedera.yaml `enabled: true`): calls hcs_list_recent,
+  shows the latest 10 ledger entries with a HashScan link
 
 ## Agent behaviour (system prompt rules)
 - Destructive/lifecycle NF operations (start/stop/restart): EXACTLY ONE tool call per
