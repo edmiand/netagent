@@ -25,16 +25,31 @@ def _resolve_model(model_name: str | None) -> tuple[str, dict]:
         raise KeyError(f"Model {name!r} is not defined in config/models.yaml") from None
 
 
+def ollama_model_name(model_name: str | None = None) -> str:
+    """Ollama model name for a models.yaml entry.
+
+    `model:` decouples the picker label (the yaml key) from the Ollama model
+    name; when it is absent or empty, the key itself is the Ollama name.
+    """
+    name, model_block = _resolve_model(model_name)
+    return model_block.get("model") or name
+
+
+def model_label(model_name: str | None = None) -> str:
+    """Display label: the yaml key, plus the Ollama model when they differ."""
+    name, _ = _resolve_model(model_name)
+    ollama_name = ollama_model_name(name)
+    return name if ollama_name == name else f"{name} ({ollama_name})"
+
+
 def get_llm(
     thinking: bool = False,
     suppress_thinking: bool = False,
     model_name: str | None = None,
 ) -> ChatOllama:
-    name, model_block = _resolve_model(model_name)
+    _, model_block = _resolve_model(model_name)
     kwargs: dict = dict(
-        # `model:` decouples the picker label (the yaml key) from the Ollama
-        # model name, e.g. key "local-ollama" → model "gemma4:latest".
-        model=model_block.get("model", name),
+        model=ollama_model_name(model_name),
         base_url=model_block["base_url"],
         temperature=model_block["temperature"],
         num_predict=model_block["max_tokens"],
@@ -80,12 +95,12 @@ def model_supports_thinking(model_name: str | None = None) -> bool:
 
 
 async def test_llm_connection() -> bool:
-    model_name = get_active_model_name()
+    label = model_label()
     try:
         await get_llm().ainvoke([HumanMessage(content="ping")])
-        print(f"LLM connected: {model_name}")
+        print(f"LLM connected: {label}")
         return True
     except Exception as exc:
-        print(f"LLM connection failed: {exc}")
-        print("Hint: check that Ollama is running and the model is pulled.")
+        print(f"LLM connection failed ({label}): {exc}")
+        print(f"Hint: check that Ollama is running and `{ollama_model_name()}` is pulled.")
         return False

@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage
 
 from chainlit.input_widget import Select, Switch
 
-from agent.llm import get_active_model_name, list_available_models, model_supports_thinking
+from agent.llm import get_active_model_name, list_available_models, model_label, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from langgraph.checkpoint.memory import MemorySaver
@@ -190,7 +190,7 @@ def _build_widgets() -> list:
             id="model_name",
             label="Model",
             description="Ollama model backing the agent. Switching rebuilds the agent for this chat only — config/models.yaml sets the default for new chats.",
-            values=available,
+            items={model_label(m): m for m in available},
             initial_value=model_name if model_name in available else available[0],
         ))
     if model_supports_thinking(model_name):
@@ -288,7 +288,7 @@ async def on_chat_start():
     await _send(cl.Message(
         content=(
             f"**{branding['welcome_title']}**\n\n"
-            f"Model: `{model_name}`{model_hint}\n\n"
+            f"Model: `{model_label(model_name)}`{model_hint}\n\n"
             f"**Tools:** {tool_names}"
         ),
         actions=_make_scenario_actions(),
@@ -406,7 +406,7 @@ async def on_settings_update(settings: dict):
     if model_changed or reasoning_changed or thinking_changed:
         if _rebuild_agent(show_thinking, use_reasoning, model_name=new_model):
             if model_changed:
-                await cl.Message(content=f"🔀 Model switched to **`{new_model}`** for this chat.").send()
+                await cl.Message(content=f"🔀 Model switched to **`{model_label(new_model)}`** for this chat.").send()
             elif reasoning_changed:
                 status_r = "enabled" if use_reasoning else "disabled"
                 await cl.Message(content=f"🧠 Model reasoning **{status_r}**.").send()

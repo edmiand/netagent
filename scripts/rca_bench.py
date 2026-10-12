@@ -9,8 +9,8 @@ Tool list mirrors app.py's _build_tools() (MCP + local RAG/release tools) but
 omits the Hedera tools so a test run never writes to the public HCS topic,
 and skips the Human Approval wrapper (no UI to approve in).
 
-  .venv/bin/python scripts/rca_bench.py gemma4:latest
-  .venv/bin/python scripts/rca_bench.py gemma4:latest --no-reasoning
+  .venv/bin/python scripts/rca_bench.py local-ollama
+  .venv/bin/python scripts/rca_bench.py local-ollama --no-reasoning
 """
 
 import argparse
@@ -21,7 +21,7 @@ import uuid
 from langchain_core.messages import HumanMessage
 
 from agent.graph import create_agent
-from agent.llm import model_supports_thinking
+from agent.llm import model_label, model_supports_thinking
 from agent.mcp_bridge import get_mcp_tools
 from agent.tools.rag import search_knowledge_base
 from agent.tools.release_check import check_open5gs_release_info
@@ -63,7 +63,7 @@ async def run(model: str, reasoning: bool) -> None:
         elapsed = time.monotonic() - t0
 
     print("\n=== FINAL ANSWER ===\n" + final)
-    print(f"\n=== {model} (reasoning {'on' if thinking else 'off'}): "
+    print(f"\n=== {model_label(model)} (reasoning {'on' if thinking else 'off'}): "
           f"{len(calls)} tool calls in {elapsed:.1f}s ===")
     print("sequence:", " → ".join(calls))
     print("last call usage:", usage)
