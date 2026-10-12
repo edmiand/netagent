@@ -35,6 +35,17 @@ models:
     thinking: true
     description: "NVIDIA Nemotron-3-Ultra model via local Ollama"
 
+  gemma4:latest:
+    # Runs on the host Mac (Apple Silicon, MLX), reached via the VM's gateway
+    # IP — on-prem inference, no prompt or tool output leaves the site. The Mac
+    # must run Ollama with OLLAMA_HOST=0.0.0.0 (or the bridge IP).
+    base_url: http://192.168.64.1:11434
+    temperature: 0
+    max_tokens: 4096
+    context_window: 32768       # local: sizes the KV cache on the Mac
+    thinking: true
+    description: "Local Gemma 4 on host Mac — on-prem, no data leaves site"
+
   qwen2.5:7b:
     base_url: http://localhost:11434
     temperature: 0
