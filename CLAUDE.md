@@ -15,7 +15,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 ## Key paths
 - config/models.yaml  — model registry + default ('active'); per-model `enabled: false`
   hides an entry from the in-chat picker, `context_window` → Ollama num_ctx (per the
-  model's ollama.com page); also holds the `embeddings:` block
+  model's ollama.com page), optional `model:` = Ollama model name when it differs from the
+  key (the key is the picker label — `local-ollama` uses this to point at whatever model
+  runs on the host Mac at 192.168.64.1); also holds the `embeddings:` block
 - config/mcp.yaml     — MCP server URL (update VM1 IP on fresh deploy)
 - agent/llm.py        — LangChain model loader (reads models.yaml); also `get_embeddings()`
 - agent/mcp_bridge.py — streamable HTTP client (MultiServerMCPClient, reads mcp.yaml)

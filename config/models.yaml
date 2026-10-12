@@ -4,6 +4,9 @@
 # `active` is always listed even if disabled. Editing this file needs an app
 # restart to take effect.
 #
+# model: optional Ollama model name when it differs from the key (the key is
+#   what the picker shows). Defaults to the key itself.
+#
 # context_window: model's context length in tokens, per its ollama.com page.
 #   Mapped to Ollama's num_ctx. For `-cloud` models this is advisory — the
 #   cloud host enforces the real limit; for local models it sizes the KV cache
@@ -35,16 +38,19 @@ models:
     thinking: true
     description: "NVIDIA Nemotron-3-Ultra model via local Ollama"
 
-  gemma4:latest:
-    # Runs on the host Mac (Apple Silicon, MLX), reached via the VM's gateway
-    # IP — on-prem inference, no prompt or tool output leaves the site. The Mac
-    # must run Ollama with OLLAMA_HOST=0.0.0.0 (or the bridge IP).
+  local-ollama:
+    # Runs on the host Mac (Apple Silicon), reached via the VM's gateway IP —
+    # on-prem inference, no prompt or tool output leaves the site. The Mac must
+    # run Ollama with OLLAMA_HOST=0.0.0.0 (or the bridge IP). To switch models,
+    # `ollama pull` it on the Mac, change `model:` below, and restart the app.
+    # The chosen model must support tools and thinking (`ollama show <model>`).
+    model: gemma4:latest
     base_url: http://192.168.64.1:11434
     temperature: 0
     max_tokens: 4096
     context_window: 32768       # local: sizes the KV cache on the Mac
     thinking: true
-    description: "Local Gemma 4 on host Mac — on-prem, no data leaves site"
+    description: "Local Ollama on host Mac — on-prem, no data leaves site"
 
   qwen2.5:7b:
     base_url: http://localhost:11434

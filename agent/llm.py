@@ -32,7 +32,9 @@ def get_llm(
 ) -> ChatOllama:
     name, model_block = _resolve_model(model_name)
     kwargs: dict = dict(
-        model=name,
+        # `model:` decouples the picker label (the yaml key) from the Ollama
+        # model name, e.g. key "local-ollama" → model "gemma4:latest".
+        model=model_block.get("model", name),
         base_url=model_block["base_url"],
         temperature=model_block["temperature"],
         num_predict=model_block["max_tokens"],
