@@ -33,6 +33,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - knowledge_base/*.md — RAG source docs; each cites its official Open5GS documentation source URL
   (exception: ue-incident-notifications.md is project-internal policy and says so)
 - scripts/ue_notify_listener.py — UE-side receiver for send_ue_notification (stdlib only)
+- scripts/rca_bench.py — headless "Debug Attach Failure" RCA against one models.yaml entry
+  (tool sequence, timing, Root-cause heading check); use to vet a new/local model.
+  Omits Hedera tools so it never writes to the public topic. `--no-reasoning` to compare
 - scripts/build_knowledge_base.py — auto-run by netagent.sh start/restart if data/chroma/ is
   missing; rerun manually after editing knowledge_base/*.md to refresh a stale index
 - app.py              — Chainlit entry point
