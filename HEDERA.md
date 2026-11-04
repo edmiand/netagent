@@ -14,8 +14,9 @@ Legend: **[V]** verified by running it · **[D]** taken from docs/source, not ru
 - Submit-to-readable latency: **[V]** — ~2.5s average, see §9
 - NetAgent tools (`agent/tools/hedera.py`): **[V]** implemented and tested outside the UI;
   `enabled: true` in the repo; verified end to end in the Chainlit UI, including Human Approval Mode
-- Topic ID: **[V]** `0.0.10994808` (testnet, admin key = current ED25519 operator key) —
-  https://hashscan.io/testnet/topic/0.0.10994808
+- Topic ID: **[V]** `0.0.11309159` (testnet, created 2026-11-04, admin key and submit key =
+  current ED25519 operator key) — https://hashscan.io/testnet/topic/0.0.11309159
+- Previous topic: `0.0.10994808` (same admin key, no submit key, entries 1–16); no longer written to
 
 ## 2. SDK
 
@@ -110,8 +111,9 @@ Notes:
 - `ResponseCode(receipt.status).name` gives a readable status (`"SUCCESS"`). **[V]**
 - `admin_key` in `TopicCreateTransaction` is what the examples pass. Without it the topic
   is immutable and cannot be deleted. Keep it set. **[D]**
-- No `submit_key` is set, so anyone can post to the topic; only the admin key can update or
-  delete it. Set a `submit_key` if only NetAgent should write. **[D]**
+- The example above sets no `submit_key`, so anyone could post to that topic; only the admin key
+  can update or delete it. **[D]** To restrict writes, pass `submit_key=op_key.public_key()` as
+  well. The current topic does this, and submits signed with the operator key succeed. **[V]**
 - Message size: `TopicMessageSubmitTransaction` has a per-message limit (~1 KB on Hedera
   proper); larger payloads need `topic_message_submit_chunked_transaction.py` (present in the SDK). **[D]**
 
