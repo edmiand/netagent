@@ -1,6 +1,7 @@
 import functools
 from pathlib import Path
 
+from eqty_lineage.langchain import eqty_tool
 from langchain_chroma import Chroma
 from langchain_core.tools import tool
 
@@ -21,6 +22,7 @@ def _get_store() -> Chroma:
 
 
 @tool
+@eqty_tool
 async def search_knowledge_base(query: str) -> str:
     """Search the Open5GS/5G reference knowledge base for background on NF
     behavior, attach/session failure modes, subscriber profile fields,

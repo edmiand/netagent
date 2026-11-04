@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import re
 import uuid
 import yaml
@@ -10,6 +11,8 @@ import httpx
 import chainlit as cl
 from chainlit.context import local_steps
 from chainlit.data import get_data_layer
+from eqty_lineage.langchain import EqtyCallbackHandler
+from eqty_sdk import Context, Signer, init, set_active_signer
 from langchain_core.messages import HumanMessage
 
 from chainlit.input_widget import Select, Switch
@@ -25,6 +28,20 @@ from agent.tools.release_check import check_open5gs_release_info
 from agent.tools.memory import recall_similar_incidents, record_incident
 from agent.tools import hedera
 from data_layer import make_data_layer
+
+# EQTY lineage: process-wide, once. This lives here rather than in start.py because
+# start.py launches Chainlit as a subprocess, and this module is what runs in it.
+# Every payload is stored, so .eqty_sdk/ and manifests/ hold chat text and tool
+# arguments in plaintext, including IMSIs, UE IPs and any K/OPc typed to create a
+# subscriber. Both are gitignored: treat them as sensitive and don't share them.
+init(default_context=Context.new("NetAgent")).set_store_all_blobs(True)
+_eqty_notary = os.environ.get("EQTY_NOTARY_URL")
+set_active_signer(
+    Signer.vcomp_notary(url=_eqty_notary, name="netagent-notary", _load_if_exists=True)
+    if _eqty_notary else Signer.load_or_create(name="netagent")
+)
+_MANIFESTS_DIR = Path(__file__).parent / "manifests"
+_MANIFESTS_DIR.mkdir(mode=0o700, exist_ok=True)
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
 _MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
@@ -531,10 +548,14 @@ async def _run_agent(user_input: str):
             await thinking_step.__aexit__(None, None, None)
             thinking_step = None
 
+    # One handler per turn, never shared: a user can start a turn while another is
+    # still running. The handler reuses one EQTY context per thread_id across turns.
+    eqty_handler = EqtyCallbackHandler()
+
     try:
         async for event in agent.astream_events(
             {"messages": [HumanMessage(content=user_input)]},
-            config={"configurable": {"thread_id": thread_id}},
+            config={"configurable": {"thread_id": thread_id}, "callbacks": [eqty_handler]},
             version="v2",
         ):
             kind = event["event"]
@@ -743,6 +764,10 @@ async def _run_agent(user_input: str):
                 name=name,
             )
         cl.user_session.set("thread_named", True)
+
+    # Rewritten each turn with this thread's lineage so far. thread_id is the local
+    # from the start of the turn: the error path above replaces the session's copy.
+    await asyncio.to_thread(eqty_handler.context.export, _MANIFESTS_DIR / f"{thread_id}.json")
 
 
 @cl.on_chat_end

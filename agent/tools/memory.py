@@ -2,6 +2,7 @@ import functools
 from datetime import datetime, timezone
 from pathlib import Path
 
+from eqty_lineage.langchain import eqty_tool
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.tools import tool
@@ -24,6 +25,7 @@ def _get_store() -> Chroma:
 
 
 @tool
+@eqty_tool
 async def recall_similar_incidents(symptom_description: str) -> str:
     """Search past resolved incidents for ones with similar symptoms.
 
@@ -52,6 +54,7 @@ async def recall_similar_incidents(symptom_description: str) -> str:
 
 
 @tool
+@eqty_tool
 async def record_incident(nf: str, symptom: str, root_cause: str, fix_action: str) -> str:
     """Record a resolved incident to memory for future recall.
 

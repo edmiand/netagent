@@ -15,9 +15,13 @@ and skips the Human Approval wrapper (no UI to approve in).
 
 import argparse
 import asyncio
+import os
 import time
 import uuid
+from pathlib import Path
 
+from eqty_lineage.langchain import EqtyCallbackHandler
+from eqty_sdk import Context, Signer, init, set_active_signer
 from langchain_core.messages import HumanMessage
 
 from agent.graph import create_agent
@@ -33,6 +37,8 @@ _PROMPT = (
     "logs are ambiguous, then tell me exactly what is wrong and what to do to fix it."
 )
 
+_MANIFESTS_DIR = Path(__file__).parent.parent / "manifests"
+
 
 async def run(model: str, reasoning: bool) -> None:
     # Same default as app.py: reasoning on whenever the model's entry has thinking: true.
@@ -42,9 +48,15 @@ async def run(model: str, reasoning: bool) -> None:
         agent = create_agent(tools, thinking=thinking, model_name=model)
         t0 = time.monotonic()
         calls, final, usage = [], "", None
+        thread_id = str(uuid.uuid4())
+        eqty_handler = EqtyCallbackHandler()
         async for ev in agent.astream_events(
             {"messages": [HumanMessage(content=_PROMPT)]},
-            config={"configurable": {"thread_id": str(uuid.uuid4())}, "recursion_limit": 40},
+            config={
+                "configurable": {"thread_id": thread_id},
+                "recursion_limit": 40,
+                "callbacks": [eqty_handler],
+            },
             version="v2",
         ):
             kind = ev["event"]
@@ -69,6 +81,10 @@ async def run(model: str, reasoning: bool) -> None:
     print("last call usage:", usage)
     print("has **Root cause:** heading:", "**Root cause:**" in final)
 
+    manifest = _MANIFESTS_DIR / f"{thread_id}.json"
+    eqty_handler.context.export(manifest)
+    print("lineage manifest:", manifest)
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -76,6 +92,15 @@ def main() -> None:
     parser.add_argument("--no-reasoning", action="store_true",
                         help="run with model reasoning off (default: on if the model supports it)")
     args = parser.parse_args()
+    # Every payload is stored, so .eqty_sdk/ and manifests/ hold tool arguments and
+    # results in plaintext. Both are gitignored: treat them as sensitive.
+    init(default_context=Context.new("NetAgent")).set_store_all_blobs(True)
+    notary = os.environ.get("EQTY_NOTARY_URL")
+    set_active_signer(
+        Signer.vcomp_notary(url=notary, name="netagent-notary", _load_if_exists=True)
+        if notary else Signer.load_or_create(name="netagent")
+    )
+    _MANIFESTS_DIR.mkdir(mode=0o700, exist_ok=True)
     asyncio.run(run(args.model, reasoning=not args.no_reasoning))
 
 

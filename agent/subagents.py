@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from eqty_lineage.langchain import eqty_tool
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
@@ -62,7 +63,11 @@ def build_specialist_tools(tools: list, model_name: str | None = None) -> list[S
         if not subset:
             continue
         prompt_text = (_PROMPTS_DIR / spec["prompt_file"]).read_text()
-        sub_agent = create_react_agent(get_llm(model_name=model_name), subset, prompt=prompt_text)
+        # lc_agent_name is how the EQTY handler tells a subagent from a plain subgraph;
+        # create_react_agent doesn't set it.
+        sub_agent = create_react_agent(
+            get_llm(model_name=model_name), subset, prompt=prompt_text,
+        ).with_config(metadata={"lc_agent_name": spec["name"]})
 
         async def _run(task: str, _agent=sub_agent) -> str:
             result = await _agent.ainvoke(
@@ -71,10 +76,14 @@ def build_specialist_tools(tools: list, model_name: str | None = None) -> list[S
             )
             return result["messages"][-1].content
 
-        dispatch_tools.append(StructuredTool.from_function(
+        # eqty_tool goes on the StructuredTool so the source of _run is registered under
+        # the tool's name. Every specialist shares that source, so metadata is what keeps
+        # them from collapsing into one Tool asset in the manifest.
+        dispatch_tools.append(eqty_tool(StructuredTool.from_function(
             coroutine=_run,
             name=spec["name"],
             description=spec["description"],
-        ))
+            metadata={"specialist": spec["name"]},
+        )))
 
     return dispatch_tools

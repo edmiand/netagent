@@ -3,6 +3,7 @@ import functools
 import os
 import re
 
+from eqty_lineage.langchain import eqty_tool
 from langchain_core.tools import tool
 
 _INCLUDE_DOMAINS = ["github.com/open5gs/open5gs"]
@@ -25,6 +26,7 @@ def _get_client():
 
 
 @tool
+@eqty_tool
 async def check_open5gs_release_info(version: str) -> str:
     """Check what has changed upstream in Open5GS since a given version —
     fixes, releases, and security advisories landed after it.

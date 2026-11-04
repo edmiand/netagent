@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 import yaml
+from eqty_lineage.langchain import eqty_tool
 from langchain_core.tools import tool
 
 _CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "hedera.yaml"
@@ -159,6 +160,7 @@ async def _fetch_message(sequence_number: int) -> dict:
 
 
 @tool
+@eqty_tool
 async def hcs_submit_message(message: str) -> dict:
     """Write a short entry to NetAgent's audit trail on the Hedera Consensus
     Service (a public, permanent, tamper-evident log).
@@ -188,6 +190,7 @@ async def hcs_submit_message(message: str) -> dict:
 
 
 @tool
+@eqty_tool
 async def hcs_read_message(sequence_number: int) -> dict:
     """Read one entry back from NetAgent's Hedera audit-trail topic by its
     sequence number (as returned by hcs_submit_message), via the public
@@ -203,6 +206,7 @@ async def hcs_read_message(sequence_number: int) -> dict:
 
 
 @tool
+@eqty_tool
 async def hcs_list_recent(limit: int = 10) -> dict:
     """List the most recent entries on NetAgent's Hedera audit-trail topic,
     newest first, via the public mirror node. Use this when the user asks to
@@ -252,6 +256,7 @@ async def fingerprint_report(report: str) -> dict:
 
 
 @tool
+@eqty_tool
 async def hcs_verify_report(sequence_number: int) -> dict:
     """Check that a fingerprinted report has not been altered since it was
     recorded. Reads the audit-trail entry with this sequence number (it must be

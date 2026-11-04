@@ -17,6 +17,8 @@ chat_history.db
 data/chroma/
 data/memory_store/
 data/reports/
+.eqty_sdk/
+manifests/
 prompts/*.swp
 prompts/system.txt_v*
 config/mcp.yaml
