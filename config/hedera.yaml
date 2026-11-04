@@ -16,5 +16,6 @@ mirror_base_url: https://testnet.mirrornode.hedera.com
 explorer_base_url: https://hashscan.io/testnet
 
 # Topic the agent writes to. Fixed here on purpose — the model never picks a topic.
-# Created during the live test on 2026-10-11 (admin key = current ED25519 operator key).
-topic_id: "0.0.10994808"
+# Created 2026-11-04 (admin key and submit key = current ED25519 operator key).
+# Previous topic: 0.0.10994808 (same admin key, no submit key, entries 1-16).
+topic_id: "0.0.11309159"
