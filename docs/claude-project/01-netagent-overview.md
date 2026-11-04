@@ -30,9 +30,9 @@ It is a demo/showcase system: one lab 5G core, simulated UEs (UERANSIM), cloud-h
   NetAgent never modifies VM1 itself; it only calls its MCP tools.
 - **VM2** runs the Chainlit app, the agent and Ollama. The MCP connection is just a URL
   (`config/mcp.yaml`); there is no local MCP process.
-- **LLMs:** Ollama acts as a gateway to cloud-hosted models (no GPU needed). One models.yaml entry
-  (`local-ollama`) points at a model running on the operator's Apple Silicon host Mac, for
-  on-prem inference where no prompt leaves the site.
+- **LLMs:** Ollama acts as a gateway to cloud-hosted models (no GPU needed). The `local-ollama-*`
+  models.yaml entries run on the operator's Apple Silicon host Mac, for on-prem inference where
+  no prompt leaves the site.
 - **UEs:** UERANSIM simulates UEs and a gNB; each attached UE gets a tunnel interface
   (`uesimtun0`, …).
 
@@ -149,7 +149,11 @@ the user.
 | `.env` | Secrets: `CHAINLIT_AUTH_SECRET`, `TAVILY_API_KEY`, `HEDERA_OPERATOR_ID` / `HEDERA_OPERATOR_KEY` (DER), optional `EQTY_NOTARY_URL` |
 
 Current models: `gemma4:31b-cloud` (default), `gpt-oss:120b-cloud`, `nemotron-3-ultra:cloud`,
-`local-ollama` (host Mac), and `qwen2.5:7b` (disabled). All enabled ones have `thinking: true`.
+and on the host Mac `local-ollama-qwen3.8` (qwen3.8:27b-mlx, main local pick),
+`local-ollama-nemotron-3.5-lightning` (30b-mlx, telecom-oriented), `local-ollama-gpt-oss`
+(gpt-oss:20b, fast) and `local-ollama-gemma4` (gemma4:26b MoE, lightweight); `qwen2.5:7b` is
+disabled. All enabled ones have `thinking: true`. Local entries keep context_window at 32K
+because it sizes the KV cache in the Mac's RAM.
 
 ## Code layout
 

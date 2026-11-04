@@ -285,8 +285,12 @@ active: gemma4:31b-cloud   # ← default model for new chats
 
 Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:120b-cloud`, `nemotron-3-ultra:cloud`.  
 No GPU required — Ollama is used as a gateway only.  
-`local-ollama` points at a model on the host Mac (on-prem, nothing leaves the site; its `model:`
-field names the Ollama model to use). `qwen2.5:7b` is listed but `enabled: false`.  
+The `local-ollama-*` entries run on the host Mac (on-prem, nothing leaves the site):
+`local-ollama-qwen3.8` (main pick), `local-ollama-nemotron-3.5-lightning`, `local-ollama-gpt-oss`
+(fast) and `local-ollama-gemma4` (lightweight). Each `model:` field is the Ollama tag; pull it on
+the Mac first, and the Mac's Ollama must listen beyond localhost (`OLLAMA_HOST=0.0.0.0`). Vet a
+model with `scripts/rca_bench.py <key>` before making it the default.
+`qwen2.5:7b` is listed but `enabled: false`.  
 Restart Chainlit after changing `active` or the `models:` list.
 
 **In-chat model picker.** The web UI's ⚙️ Settings panel shows a **Model**

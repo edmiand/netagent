@@ -54,7 +54,7 @@ After the first run on a fresh install: `chmod 700 .eqty_sdk` (holds the lineage
 |---|---|
 | Default model / model list | Edit `config/models.yaml`, `./netagent.sh restart` |
 | Add a model | New `models:` entry; `context_window` from the model's ollama.com page; `thinking: true` only if it supports it; it must support tool calling |
-| Local model on the host Mac | Pull it there, set `model:` in the `local-ollama` entry, restart. The Mac's Ollama must listen beyond localhost (`OLLAMA_HOST=0.0.0.0`) |
+| Local model on the host Mac | Pull it there, add or edit a `local-ollama-*` entry (`model:` = the Ollama tag; `base_url: *local_ollama`), restart. The Mac's Ollama must listen beyond localhost (`OLLAMA_HOST=0.0.0.0`) |
 | Knowledge-base docs | Edit/add `knowledge_base/*.md` (cite the source URL at the top), run `.venv/bin/python scripts/build_knowledge_base.py`, restart. Start only auto-builds a *missing* index, never a stale one |
 | Hedera on/off, topic | `config/hedera.yaml`, restart (the write client caches the topic) |
 | Lineage viewer on/off | `config/lineage.yaml` `viewer_enabled`, restart |
