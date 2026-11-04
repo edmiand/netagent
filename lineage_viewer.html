@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetAgent Lineage</title>
+<style>
+  :root { --bg: #f7f7f9; --panel: #ffffff; --text: #1b1b20; --muted: #6b6b76; --line: #e2e2e8; --bad: #b91c1c; --link: #2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111114; --panel: #1b1b20; --text: #e8e8ec; --muted: #9a9aa6; --line: #2a2a31; --bad: #f87171; --link: #7aa2ff; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line); min-height: 42px; }
+  header b { white-space: nowrap; }
+  #thread { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; overflow-wrap: anywhere; }
+  #spacer { flex: 1; }
+  #status { color: var(--muted); }
+  #status.bad { color: var(--bad); }
+  a { color: var(--link); text-decoration: none; white-space: nowrap; }
+  a:hover { text-decoration: underline; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #explorer { display: block; flex: 1; min-width: 0; height: 100%; }
+</style>
+</head>
+<body>
+<header>
+  <b>🧬 NetAgent lineage</b>
+  <span id="thread"></span>
+  <span id="spacer"></span>
+  <span id="status">loading…</span>
+  <a id="download" download>Download JSON</a>
+</header>
+<main>
+  <eqty-explorer id="explorer" show-upload="false"></eqty-explorer>
+</main>
+<script nonce="__NONCE__">
+"use strict";
+// Filled in by lineage_viewer.py: {threadId, explorerSrc, explorerSri}.
+const CONFIG = __CONFIG__;
+const $ = (id) => document.getElementById(id);
+const explorer = $("explorer");
+const setStatus = (text, bad = false) => { $("status").textContent = text; $("status").classList.toggle("bad", bad); };
+
+// Relative to /<root>/lineage/<id>, so it works under any Chainlit root path.
+const manifestUrl = `${encodeURIComponent(CONFIG.threadId)}/manifest.json`;
+$("thread").textContent = `thread ${CONFIG.threadId}`;
+$("download").href = manifestUrl;
+$("download").setAttribute("download", `netagent-lineage-${CONFIG.threadId}.json`);
+
+const dark = window.matchMedia("(prefers-color-scheme: dark)");
+const applyTheme = () => explorer.setAttribute("theme", dark.matches ? "dark" : "light");
+applyTheme();
+dark.addEventListener("change", applyTheme);
+
+explorer.addEventListener("manifestchange", () => setStatus(""));
+
+// The published explorer, pinned by version and hash.
+const script = document.createElement("script");
+script.type = "module";
+script.src = CONFIG.explorerSrc;
+script.integrity = CONFIG.explorerSri;
+script.crossOrigin = "anonymous";
+script.onerror = () => setStatus("could not load the explorer from jsdelivr (offline?). The JSON download still works.", true);
+document.head.append(script);
+
+fetch(manifestUrl, { cache: "no-store" })
+  .then((response) => {
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  })
+  .then(async (manifest) => {
+    setStatus("rendering…");
+    // A property set before the element is defined would hide its setter, so wait for it.
+    await customElements.whenDefined("eqty-explorer");
+    explorer.manifest = manifest;
+  })
+  .catch((error) => setStatus(`could not read the manifest: ${error.message}`, true));
+</script>
+</body>
+</html>

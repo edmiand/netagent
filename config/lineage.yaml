@@ -1,0 +1,11 @@
+# EQTY lineage viewer in the Web UI — see lineage_viewer.py.
+#
+# true → a "🧬 Lineage" button on every message links to /lineage/<thread_id>, which shows
+# this chat's manifest (manifests/<thread_id>.json) in the EQTY lineage explorer, plus a
+# raw JSON download.
+#
+# Access control: header auth gives every visitor the same "demo" user, so the app can't
+# tell whose chat a manifest is. Anyone who can reach the app and has a link can open it.
+# Manifests hold chat text and tool data in plaintext (IMSIs, UE IPs, any K/OPc typed in,
+# 5G-AKA data from get_ue_trace). Set false on any deployment with real subscribers.
+viewer_enabled: true

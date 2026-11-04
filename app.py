@@ -28,6 +28,9 @@ from agent.tools.release_check import check_open5gs_release_info
 from agent.tools.memory import recall_similar_incidents, record_incident
 from agent.tools import hedera
 from data_layer import make_data_layer
+import lineage_viewer
+from chainlit.config import config as _cl_config
+from chainlit.server import app as _cl_app
 
 # EQTY lineage: process-wide, once. This lives here rather than in start.py because
 # start.py launches Chainlit as a subprocess, and this module is what runs in it.
@@ -42,6 +45,10 @@ set_active_signer(
 )
 _MANIFESTS_DIR = Path(__file__).parent / "manifests"
 _MANIFESTS_DIR.mkdir(mode=0o700, exist_ok=True)
+# 🧬 Lineage button → /lineage/<thread_id> (config/lineage.yaml; see lineage_viewer.py).
+_LINEAGE_VIEWER = lineage_viewer.is_enabled()
+if _LINEAGE_VIEWER:
+    lineage_viewer.mount(_cl_app, _cl_config.run.root_path)
 
 # Optional trailing horizontal whitespace between "mermaid" and the newline
 _MERMAID_RE = re.compile(r"```mermaid[ \t]*\n(.*?)```", re.DOTALL)
@@ -190,6 +197,8 @@ def _make_scenario_actions() -> list[cl.Action]:
             label="📜 Audit Trail",
             payload={"prompt": "Show the 10 most recent audit trail entries."},
         ))
+    if _LINEAGE_VIEWER:
+        actions.append(cl.Action(name="lineage_view", label="🧬 Lineage", payload={}))
     return actions
 
 
@@ -336,6 +345,26 @@ async def on_debug_failure(action: cl.Action):
 async def on_audit_trail(action: cl.Action):
     if not cl.user_session.get("read_only"):
         await _run_agent(action.payload["prompt"])
+
+
+@cl.action_callback("lineage_view")
+async def on_lineage_view(action: cl.Action):
+    """Link to this chat's lineage manifest in the explorer. No agent call, so it adds
+    nothing to the manifest it links to."""
+    manifest_id = cl.context.session.thread_id
+    if not lineage_viewer.manifest_exists(manifest_id):
+        await cl.Message(
+            content="🧬 No lineage manifest for this chat yet. One is written when a turn finishes.",
+        ).send()
+        return
+    url = lineage_viewer.viewer_url(manifest_id, _cl_config.run.root_path)
+    await cl.Message(
+        content=(
+            f"🧬 **[Open lineage graph]({url})** · [Download manifest JSON]({url}/manifest.json)\n\n"
+            "Signed record of this chat's model calls and tool calls so far; it updates after every turn. "
+            "Anyone with this link can open it, and it holds tool data in plaintext."
+        ),
+    ).send()
 
 
 @cl.action_callback("fingerprint_report")
@@ -549,13 +578,23 @@ async def _run_agent(user_input: str):
             thinking_step = None
 
     # One handler per turn, never shared: a user can start a turn while another is
-    # still running. The handler reuses one EQTY context per thread_id across turns.
+    # still running. The handler reuses one EQTY context per metadata thread_id across turns.
     eqty_handler = EqtyCallbackHandler()
+    # Lineage is keyed by the Chainlit chat id (the one in the browser URL), not the
+    # checkpointer's thread_id, which is per-session and replaced after a failed turn.
+    # An explicit metadata thread_id wins over the one LangGraph copies from configurable,
+    # so the checkpointer is unaffected. Archived chats are read-only, so a resumed chat
+    # never starts a fresh context that would overwrite its file.
+    lineage_id = cl.context.session.thread_id
 
     try:
         async for event in agent.astream_events(
             {"messages": [HumanMessage(content=user_input)]},
-            config={"configurable": {"thread_id": thread_id}, "callbacks": [eqty_handler]},
+            config={
+                "configurable": {"thread_id": thread_id},
+                "metadata": {"thread_id": lineage_id},
+                "callbacks": [eqty_handler],
+            },
             version="v2",
         ):
             kind = event["event"]
@@ -765,9 +804,8 @@ async def _run_agent(user_input: str):
             )
         cl.user_session.set("thread_named", True)
 
-    # Rewritten each turn with this thread's lineage so far. thread_id is the local
-    # from the start of the turn: the error path above replaces the session's copy.
-    await asyncio.to_thread(eqty_handler.context.export, _MANIFESTS_DIR / f"{thread_id}.json")
+    # Rewritten each turn with this chat's lineage so far.
+    await asyncio.to_thread(eqty_handler.context.export, _MANIFESTS_DIR / f"{lineage_id}.json")
 
 
 @cl.on_chat_end

@@ -119,9 +119,19 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 
 ## EQTY lineage manifests
 Every agent run emits a signed, content-addressed record of its graph nodes, model calls and
-tool calls. Both app.py (`_run_agent`) and scripts/rca_bench.py write
-`manifests/<thread_id>.json`; the app rewrites that file after each turn, so it holds the
-whole chat. Check one with the `eqty-manifest` skill.
+tool calls. Both app.py (`_run_agent`) and scripts/rca_bench.py write `manifests/<id>.json`.
+The app uses the Chainlit chat id (the one in the browser URL, `cl.context.session.thread_id`),
+passed as `metadata.thread_id` so the lineage context follows the chat, while
+`configurable.thread_id` stays the checkpointer's own id, which a failed turn replaces. It
+rewrites the file after each turn, so it holds the whole chat. Check one with the `eqty-manifest` skill.
+
+Web UI viewer (lineage_viewer.py + lineage_viewer.html, switch in config/lineage.yaml): the
+🧬 Lineage button links to `/lineage/<thread_id>`, which renders the manifest in the pinned
+`@eqtylab/explorer` component (jsdelivr, SRI-pinned, same pin as the eqty-explorer skill), plus
+`/lineage/<thread_id>/manifest.json`. The routes are inserted ahead of Chainlit's SPA catch-all
+(appending them would shadow them). The button links the current Chainlit chat id, so it also
+works in archived (read-only) chats.
+No real auth (header auth = one "demo" user): anyone with the link can read it.
 
 Rules that fail quietly (the run succeeds and the manifest is still wrong):
 - `init()` runs once per process: app.py module level and rca_bench `main()`. Not in start.py,
