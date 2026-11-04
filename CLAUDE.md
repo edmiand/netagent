@@ -41,6 +41,9 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - scripts/build_knowledge_base.py — auto-run by netagent.sh start/restart if data/chroma/ is
   missing; rerun manually after editing knowledge_base/*.md to refresh a stale index
 - app.py              — Chainlit entry point
+- lineage_viewer.py + lineage_viewer.html — Web UI viewer for EQTY lineage manifests
+  (`/lineage/<chat_id>` routes, 🧬 Lineage button); switch in config/lineage.yaml
+  (`viewer_enabled`). See "EQTY lineage manifests" below
 - prompts/system.txt  — agent system prompt
 - test_integration.py — 3-check integration test (LLM reachable · MCP tools · round-trip),
   plus an optional 4th HCS round-trip check that is skipped while config/hedera.yaml is disabled
@@ -126,12 +129,18 @@ passed as `metadata.thread_id` so the lineage context follows the chat, while
 rewrites the file after each turn, so it holds the whole chat. Check one with the `eqty-manifest` skill.
 
 Web UI viewer (lineage_viewer.py + lineage_viewer.html, switch in config/lineage.yaml): the
-🧬 Lineage button links to `/lineage/<thread_id>`, which renders the manifest in the pinned
-`@eqtylab/explorer` component (jsdelivr, SRI-pinned, same pin as the eqty-explorer skill), plus
-`/lineage/<thread_id>/manifest.json`. The routes are inserted ahead of Chainlit's SPA catch-all
-(appending them would shadow them). The button links the current Chainlit chat id, so it also
-works in archived (read-only) chats.
+🧬 Lineage button posts links to `/lineage/<chat_id>`, which renders the manifest in the pinned
+`@eqtylab/explorer` component (jsdelivr, SRI-pinned, same pin as the eqty-explorer skill), and
+`/lineage/<chat_id>/manifest.json`, which is sent as `Content-Disposition: attachment` so it
+downloads (the page's fetch() ignores that header). The button handler is plain code — no agent or
+model call, so it adds nothing to the manifest. The routes are inserted ahead of Chainlit's SPA
+catch-all (appending them would shadow them) and accept only canonical UUIDs. The page's CSP
+allows connections only back to the app and the pinned explorer directory, plus
+`Referrer-Policy: no-referrer` so the chat id never reaches jsdelivr. The button links the
+current Chainlit chat id, so it also works in archived (read-only) chats.
 No real auth (header auth = one "demo" user): anyone with the link can read it.
+A "Save as" dialog on download is a browser setting, not something the app controls
+(`showSaveFilePicker()` would need HTTPS or localhost and Chromium; not implemented).
 
 Rules that fail quietly (the run succeeds and the manifest is still wrong):
 - `init()` runs once per process: app.py module level and rca_bench `main()`. Not in start.py,
@@ -147,7 +156,8 @@ arguments and results in plaintext: IMSIs, UE IPs, any K/OPc typed to create a s
 5G-AKA data from get_ue_trace (RAND, truncated AUTN, what looks like a truncated KSEAF).
 .eqty_sdk/ also holds the signing key. Both are gitignored. manifests/ is created 0700, but the SDK
 creates .eqty_sdk/ with default permissions: run `chmod 700 .eqty_sdk` after the first run on a
-fresh install. Don't share manifests from a deployment with real subscribers.
+fresh install. Don't share manifests from a deployment with real subscribers, and set
+config/lineage.yaml `viewer_enabled: false` there: the viewer serves them to anyone with a link.
 
 What a manifest does not show:
 - MCP tools on VM1: name and MCP hints only, no source
@@ -231,13 +241,15 @@ export; the next turn's should include it).
   Run once per fresh install/VM (README step 10); not committed to git (it's a
   per-machine unit file under ~/.config/systemd/user/, not repo state).
 
-## Demo scenarios (3 action buttons on every message, +📜 Audit Trail when Hedera is enabled)
+## Demo scenarios (3 action buttons on every message, +📜 Audit Trail when Hedera is enabled, +🧬 Lineage when the lineage viewer is enabled)
 - Health Snapshot: calls system_health_snapshot, reports NF status table with emojis
 - Watch Subscriber Attach: calls list_ue_sessions, shows registered UEs and PDU sessions
 - Debug Attach Failure: runs the full RCA chain (health → logs → config → sessions →
   subscriber checks), reports Root Cause / Evidence / Recommended Action
 - Audit Trail (only when config/hedera.yaml `enabled: true`): calls hcs_list_recent,
   shows the latest 10 ledger entries with a HashScan link
+- Lineage (only when config/lineage.yaml `viewer_enabled: true`): no agent call; posts links
+  to this chat's lineage graph and manifest JSON download
 
 ## Agent behaviour (system prompt rules)
 - Destructive/lifecycle NF operations (start/stop/restart): EXACTLY ONE tool call per

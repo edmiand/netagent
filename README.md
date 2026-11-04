@@ -48,8 +48,13 @@ operations tools, diagnoses faults, and streams every step visibly in the UI.
 | Tool | What it does |
 |------|-------------|
 | `search_knowledge_base` | Semantic search over a local Chroma vector store seeded with official Open5GS documentation — grounds RCA answers in real doc content instead of relying on model memory |
+| `check_open5gs_release_info` | Tavily lookup pinned to github.com/open5gs/open5gs: what changed upstream since a given version (pairs with `open5gs_version`; needs `TAVILY_API_KEY`) |
+| `hcs_submit_message` · `hcs_read_message` · `hcs_list_recent` · `hcs_verify_report` | Hedera Consensus Service audit trail — only when `config/hedera.yaml` has `enabled: true` (see [Audit trail and lineage](#audit-trail-and-lineage)) |
+| `recall_similar_incidents` · `record_incident` | Memory & Learning: recall and record past resolved incidents — only when the ⚙️ Memory & Learning toggle is on |
 
-Unlike the MCP tools above, this one runs entirely in-process (`agent/tools/rag.py`) — no VM1 round-trip. It's merged into the same tool list the agent sees, so the model calls it exactly like any MCP tool; it just shows up with a 📚 icon in the transcript.
+These run in-process (`agent/tools/`) — no VM1 round-trip. They're merged into the same tool list the agent sees, so the model calls them exactly like MCP tools (`search_knowledge_base` shows up with a 📚 icon in the transcript).
+
+**Specialist sub-agents.** The main agent can also delegate to two read-only specialists (`agent/subagents.py`), each its own bounded ReAct agent with a narrow tool subset: the **Connectivity Investigator** (sessions, UE trace, RAN, subscriber, logs) and the **NF Health Investigator** (health, logs, resource usage, config). They return findings; remediation stays with the main agent and you.
 
 **Knowledge base sources:** five of the files under `knowledge_base/*.md` are written from real Open5GS documentation (each file cites its source URL at the top), not model-generated content — see:
 - `open5gs-nf-overview.md` — https://open5gs.org/open5gs/docs/guide/01-quickstart/
@@ -81,6 +86,7 @@ This chunks the docs, embeds them via a local `nomic-embed-text` Ollama model, a
 - Network access to VM1 on port 8080
 - Port 8000 open for inbound connections (Chainlit UI)
 - Outbound internet access to `https://mermaid.ink` (call flow diagram rendering — no install needed, falls back to raw Mermaid code if unreachable)
+- The browser needs access to `https://cdn.jsdelivr.net` for the 🧬 lineage graph viewer (the JSON download works without it)
 
 ---
 
@@ -118,8 +124,8 @@ systemctl status ollama
 
 ### 3. Configure cloud models
 
-This app uses **cloud-hosted models** (`gemma4:31b-cloud`, `gpt-oss:20b-cloud`)
-— no local GPU is required. Ollama serves as the API gateway only; the model
+This app uses **cloud-hosted models** (`gemma4:31b-cloud`, `gpt-oss:120b-cloud`,
+`nemotron-3-ultra:cloud`) — no local GPU is required. Ollama serves as the API gateway only; the model
 computation runs in the cloud.
 
 No `ollama pull` is needed for chat. Verify Ollama is reachable and leave the
@@ -195,7 +201,7 @@ servers:
 Edit `config/models.yaml` and set `active` to your preferred cloud model:
 
 ```yaml
-active: gemma4:31b-cloud   # or gpt-oss:20b-cloud
+active: gemma4:31b-cloud   # or gpt-oss:120b-cloud, nemotron-3-ultra:cloud
 ```
 
 `active` is the default for every new chat. Users can also switch models
@@ -220,6 +226,7 @@ No manual step needed — `./netagent.sh start` (step 11) auto-builds
 source .venv/bin/activate
 python test_integration.py
 # Exit code 0 = LLM reachable · MCP tools loaded · agent round-trip OK
+# (plus an optional Hedera round-trip check, skipped while config/hedera.yaml is disabled)
 ```
 
 ### 10. Enable the app to start on boot (recommended)
@@ -276,8 +283,10 @@ ollama pull nomic-embed-text          # embeddings model for the RAG tool
 active: gemma4:31b-cloud   # ← default model for new chats
 ```
 
-Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:20b-cloud`.  
+Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:120b-cloud`, `nemotron-3-ultra:cloud`.  
 No GPU required — Ollama is used as a gateway only.  
+`local-ollama` points at a model on the host Mac (on-prem, nothing leaves the site; its `model:`
+field names the Ollama model to use). `qwen2.5:7b` is listed but `enabled: false`.  
 Restart Chainlit after changing `active` or the `models:` list.
 
 **In-chat model picker.** The web UI's ⚙️ Settings panel shows a **Model**
@@ -317,28 +326,43 @@ app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
 netagent.sh           # Process manager: start / stop / restart / status / logs
 data_layer.py           # SQLite chat history persistence (sqlalchemy + aiosqlite)
+lineage_viewer.py       # /lineage/<chat_id> routes for the 🧬 Lineage viewer (+ lineage_viewer.html)
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
-  mcp_bridge.py        # SSE client via MultiServerMCPClient
+  mcp_bridge.py        # Streamable HTTP client via MultiServerMCPClient
   graph.py             # LangGraph ReAct agent (create_react_agent)
+  subagents.py         # The two read-only specialist sub-agents
   approval.py          # wrap_with_approval() — generic, works on any tool (MCP or local)
   tools/
     rag.py              # search_knowledge_base — local RAG tool over the Chroma store
+    release_check.py    # check_open5gs_release_info — Tavily upstream release lookup
+    hedera.py           # hcs_* audit-trail tools + report fingerprinting
+    memory.py           # recall_similar_incidents / record_incident (Memory & Learning)
 config/
   models.yaml          # Model registry, active model selection, embeddings config
-  mcp.yaml             # MCP server URL (update VM1 IP here)
+  mcp.yaml             # MCP server URL (update VM1 IP here; gitignored)
+  hedera.yaml          # Audit trail: enabled, network, mirror/explorer URLs, topic
+  lineage.yaml         # Lineage viewer on/off
   branding.yaml        # Agent name, welcome title, logo file
 prompts/
   system.txt           # Agent system prompt — behaviour rules and formatting
+  subagents/           # Specialist prompts
 knowledge_base/
   *.md                 # Open5GS-doc-sourced reference notes (each cites its source URL)
 scripts/
   ue_notify_listener.py    # UE-side receiver for send_ue_notification (run on the UERANSIM host)
   build_knowledge_base.py  # Chunk + embed knowledge_base/*.md → data/chroma/ (auto-run by netagent.sh start if missing; rerun manually after editing knowledge_base/*.md)
+  rca_bench.py             # Headless "Debug Attach Failure" RCA against one model — vet a new model
+  seed_memory_store.py     # Seed the Memory & Learning incident store
+  install_service.sh       # systemd --user unit for auto-start on boot
 data/
   chroma/               # Persisted RAG vector store (gitignored, generated by the build script)
+  reports/              # Fingerprinted RCA reports (gitignored)
+manifests/              # EQTY lineage manifests, one per chat (gitignored)
+docs/claude-project/    # Condensed docs snapshot for attaching to a Claude Project
+HEDERA.md · HEDERA_DEMO.md · ROADMAP.md · CLAUDE.md
 .env.example           # Environment template (copy to .env — OLLAMA_API_KEY=ollama)
-test_integration.py    # 3-check integration test (LLM · MCP · agent round-trip)
+test_integration.py    # Integration test (LLM · MCP · agent round-trip · optional Hedera)
 ```
 
 ---
@@ -389,6 +413,12 @@ fresh chat):
 2. **👀 Watch Subscriber Attach** — calls `list_ue_sessions`, shows all registered UEs and PDU sessions
 3. **🔍 Debug Attach Failure** — runs the full RCA chain (health → logs → config → sessions → subscriber checks) and reports Root Cause / Evidence / Recommended Action
 
+Depending on config, a message can also carry:
+
+- **📜 Audit Trail** (Hedera enabled) — the 10 most recent ledger entries with a HashScan link
+- **🧬 Lineage** (lineage viewer enabled) — links to this chat's lineage graph and manifest download
+- **🔏 Fingerprint report** (RCA replies only) — records the report's SHA-256 on Hedera
+
 You can also type free-form questions, e.g.:
 - `show subscriber imsi-999700000000001`
 - `tail amf logs for the last 10 minutes`
@@ -397,7 +427,9 @@ You can also type free-form questions, e.g.:
 
 ### Chat settings (⚙️ panel)
 
-- **Human Approval Mode** — pauses before every tool call for your explicit approval, including mid-RCA
+- **Model** — the model for this chat only (shown when more than one model is enabled)
+- **Memory & Learning** — lets the agent recall and record past resolved incidents
+- **Human Approval Mode** — pauses before every tool call for your explicit approval, including mid-RCA (unanswered prompts auto-deny after 120 s)
 - **Use Model Reasoning** — toggles the model's internal reasoning on/off (only shown for models that support it); off trades depth for speed
 - **Show Model Thinking** — streams the model's reasoning before each response (requires Use Model Reasoning on)
 
@@ -425,11 +457,27 @@ Ask the agent about any 5G procedure and it will produce a Mermaid sequence diag
 
 ---
 
+## Audit trail and lineage
+
+- **Hedera audit trail.** With `config/hedera.yaml` `enabled: true` and `HEDERA_OPERATOR_ID` /
+  `HEDERA_OPERATOR_KEY` (DER-encoded) in `.env`, the agent writes one short entry to a public
+  Hedera testnet topic after each successful change, so anyone can check what it did on HashScan.
+  Entries are public and permanent: the agent strips IMSIs and IPs, and the tool refuses them.
+  Details in [HEDERA.md](HEDERA.md); demo script in [HEDERA_DEMO.md](HEDERA_DEMO.md).
+- **EQTY lineage manifests.** Every turn adds to a signed record of the chat's model and tool
+  calls in `manifests/<chat_id>.json`. The 🧬 **Lineage** button links to `/lineage/<chat_id>`,
+  which draws it as a graph, and to a JSON download. There is no real login, so anyone who can
+  reach the app and has a link can open a manifest — and manifests hold tool data (IMSIs, UE IPs,
+  keys) in plaintext. Set `config/lineage.yaml` `viewer_enabled: false` on any deployment with
+  real subscribers, and run `chmod 700 .eqty_sdk` (signing key) after the first run.
+
+---
+
 ## Switching models
 
 ```bash
 # Edit config/models.yaml — choose from the cloud-hosted entries
-active: gpt-oss:20b-cloud   # or gemma4:31b-cloud
+active: gpt-oss:120b-cloud   # or gemma4:31b-cloud, nemotron-3-ultra:cloud
 
 # No ollama pull needed — these models run in the cloud
 
@@ -481,7 +529,7 @@ source .venv/bin/activate
 python test_integration.py
 ```
 
-Tests check: LLM reachability · MCP tool loading (required tools present) · agent round-trip invocation.  
+Tests check: LLM reachability · MCP tool loading (required tools present) · agent round-trip invocation, plus an optional Hedera HCS round trip (skipped while `config/hedera.yaml` is disabled).  
 Exit code 0 = all pass.
 
 ---
