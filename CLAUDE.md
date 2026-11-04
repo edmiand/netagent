@@ -117,6 +117,45 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - MongoDB: mongodb://localhost:27017  db: open5gs
 - NF names: amf smf upf nrf udm udr ausf pcf bsf nssf
 
+## EQTY lineage manifests
+Every agent run emits a signed, content-addressed record of its graph nodes, model calls and
+tool calls. Both app.py (`_run_agent`) and scripts/rca_bench.py write
+`manifests/<thread_id>.json`; the app rewrites that file after each turn, so it holds the
+whole chat. Check one with the `eqty-manifest` skill.
+
+Rules that fail quietly (the run succeeds and the manifest is still wrong):
+- `init()` runs once per process: app.py module level and rca_bench `main()`. Not in start.py,
+  which launches Chainlit as a subprocess, and not per run (a second call does nothing).
+- `EqtyCallbackHandler` is created per turn and never shared. Don't attach one in
+  agent/subagents.py: specialists inherit the parent's callbacks, so it would record them twice.
+- Any new local tool needs `@eqty_tool` under `@tool`, or it records as a name-only stub.
+- Specialists share the source of `_run`. Their `metadata={"specialist": ...}` keeps them separate
+  Tool assets, and `lc_agent_name` is what records them as agents. Keep both.
+
+Sensitive data: every payload is stored, so manifests/ and .eqty_sdk/ hold chat text and tool
+arguments and results in plaintext: IMSIs, UE IPs, any K/OPc typed to create a subscriber, and
+5G-AKA data from get_ue_trace (RAND, truncated AUTN, what looks like a truncated KSEAF).
+.eqty_sdk/ also holds the signing key. Both are gitignored. manifests/ is created 0700, but the SDK
+creates .eqty_sdk/ with default permissions: run `chmod 700 .eqty_sdk` after the first run on a
+fresh install. Don't share manifests from a deployment with real subscribers.
+
+What a manifest does not show:
+- MCP tools on VM1: name and MCP hints only, no source
+- Model settings and weights: name, provider and `stop` only. temperature, num_predict, num_ctx
+  and the reasoning flag aren't recorded, and neither is a hash of the weights
+- Execution environment: signed with a local key (or a notary if EQTY_NOTARY_URL is set), with no
+  hardware evidence
+- Approval gate (agent/approval.py): its code isn't recorded; a denial is only tool output text
+- Knowledge base and memory searches: `similarity_search` fires no retriever callbacks, so results
+  are tool output, not separate documents
+- `fingerprint_report()`: runs outside the graph, so it isn't recorded. app.py also rewrites LaTeX
+  and removes Mermaid blocks before hashing, so the Hedera hash won't always match the model output
+  in the manifest
+
+Not yet confirmed in a real run: source capture on local tools other than hcs_list_recent, the
+export after a failed turn, and recovery after pressing Stop (a stopped turn likely skips its
+export; the next turn's should include it).
+
 ## Python environment
 - Python 3.11+ (pyproject.toml `requires-python`), venv at .venv/
 - Always use .venv/bin/python and .venv/bin/pip
@@ -126,7 +165,8 @@ All tool calls stream visibly as Steps in the Chainlit UI.
             pyyaml, python-dotenv, sqlalchemy + aiosqlite (chat history persistence,
             data_layer.py), langchain-chroma, chromadb, langchain-text-splitters
             (RAG knowledge-base tool), tavily-python (release/advisory check tool),
-            hiero-sdk-python (Hedera HCS tools; pinned exactly — Pre-Alpha)
+            hiero-sdk-python (Hedera HCS tools; pinned exactly — Pre-Alpha),
+            eqty_sdk + eqty-lineage-langchain (lineage manifests)
 
 ## RAG / embeddings gotcha
 - Chat models are Ollama Cloud (no local pull needed), but the embeddings model
