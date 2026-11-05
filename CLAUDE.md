@@ -23,6 +23,10 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - agent/llm.py        — LangChain model loader (reads models.yaml); also `get_embeddings()`
 - agent/mcp_bridge.py — streamable HTTP client (MultiServerMCPClient, reads mcp.yaml)
 - agent/graph.py      — LangGraph ReAct agent
+- agent/subagents.py  — two specialist sub-agents (Connectivity, NF Health), each a bounded
+  create_react_agent exposed to the main agent as one dispatch tool. Read-only by code, not just
+  prompt: their `subscriber` is a read/list-only wrapper (`_read_only_subscriber`) around the
+  approval-wrapped MCP tool; the main agent keeps the full one
 - agent/approval.py   — Human Approval Mode: wraps every tool in an approve/deny gate
   (cl.AskActionMessage, 120s auto-deny) when the Web UI toggle is on
 - agent/tools/rag.py  — local (non-MCP) `search_knowledge_base` tool, backed by a Chroma store

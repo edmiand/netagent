@@ -1,9 +1,11 @@
 from pathlib import Path
+from typing import Literal
 
 from eqty_lineage.langchain import eqty_tool
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
+from pydantic import BaseModel, Field
 
 from agent.llm import get_llm
 
@@ -47,6 +49,58 @@ _SPECIALISTS = [
 SPECIALIST_LABELS = {spec["name"]: spec["label"] for spec in _SPECIALISTS}
 
 
+class _SubscriberReadArgs(BaseModel):
+    action: Literal["read", "list"] = Field(
+        description="read: one subscriber's stored profile (needs imsi). list: enumerate subscribers.")
+    imsi: str | None = Field(
+        default=None, description='IMSI digits (10-15) or SUPI ("imsi-<digits>"). Required for read.')
+    limit: int = Field(default=100, ge=1, le=1000, description="For list only. Max subscribers per page.")
+    filter: dict | None = Field(
+        default=None,
+        description=("For list only. Equality filter; allowed keys: subscriber_status "
+                     "(0=SERVICE_GRANTED, 1=OPERATOR_DETERMINED_BARRING), network_access_mode, "
+                     "access_restriction_data, operator_determined_barring. E.g. "
+                     '{"subscriber_status": 1} lists barred subscribers.'),
+    )
+
+
+def _read_only_subscriber(base: StructuredTool) -> StructuredTool:
+    """The MCP `subscriber` tool restricted to read/list, for specialists.
+
+    The full tool also creates and deletes. Specialists are investigators: their prompts
+    say they can't modify subscribers, and this makes that true in code — create/delete
+    aren't in the schema and are refused here even if the model sends them anyway.
+    Calls go to `base`'s coroutine (the approval-wrapped tool), so Human Approval Mode
+    still gates every call, without adding a second nested tool step.
+    """
+    async def _run(action: str, imsi: str | None = None, limit: int = 100,
+                   filter: dict | None = None):
+        if action not in ("read", "list"):
+            return {"ok": False, "error": f"action '{action}' is not allowed here: this "
+                    "subscriber tool is read-only (read, list). Report the needed change "
+                    "to the supervisor instead."}
+        args = {"action": action}
+        if action == "read":
+            args["imsi"] = imsi
+        else:
+            args["limit"] = limit
+            if filter is not None:
+                args["filter"] = filter
+        return await base.coroutine(**args)
+
+    # Same name as the MCP tool so the specialist prompts and the UI step still read
+    # "subscriber"; the metadata keeps it a separate Tool asset in the EQTY manifest.
+    return eqty_tool(StructuredTool.from_function(
+        coroutine=_run,
+        name=base.name,
+        description=("Look up subscriber profiles — read one (by IMSI) or list them (optional "
+                     "filter). Read-only: you cannot create, update or delete subscribers; "
+                     "report any needed change instead. Secrets come back redacted."),
+        args_schema=_SubscriberReadArgs,
+        metadata={"read_only_view_of": base.name},
+    ))
+
+
 def build_specialist_tools(tools: list, model_name: str | None = None) -> list[StructuredTool]:
     """Wrap each specialist as a single dispatch tool for the supervisor agent.
 
@@ -56,6 +110,10 @@ def build_specialist_tools(tools: list, model_name: str | None = None) -> list[S
     via ainvoke inside the parent's callback context.
     """
     by_name = {t.name: t for t in tools}
+    # Specialists only investigate: give them a read-only subscriber tool, never the
+    # full one (create/delete) the supervisor has.
+    if "subscriber" in by_name:
+        by_name["subscriber"] = _read_only_subscriber(by_name["subscriber"])
     dispatch_tools = []
 
     for spec in _SPECIALISTS:
