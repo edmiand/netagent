@@ -30,9 +30,11 @@ It is a demo/showcase system: one lab 5G core, simulated UEs (UERANSIM), cloud-h
   NetAgent never modifies VM1 itself; it only calls its MCP tools.
 - **VM2** runs the Chainlit app, the agent and Ollama. The MCP connection is just a URL
   (`config/mcp.yaml`); there is no local MCP process.
-- **LLMs:** Ollama acts as a gateway to cloud-hosted models (no GPU needed). The `local-ollama-*`
-  models.yaml entries run on the operator's Apple Silicon host Mac, for on-prem inference where
-  no prompt leaves the site.
+- **LLMs:** Ollama acts as a gateway to cloud-hosted models (no GPU needed). The host-Mac
+  models.yaml entries (`ollama-<tag>-mlx`, `ollama-gpt-oss:20b`, `ollama-gemma4:26b`) run on the operator's Apple Silicon host Mac, for on-prem inference where
+  no prompt leaves the site. `provider: openai` entries use the OpenAI API instead (Responses
+  API, `store=false`), behind a `providers.openai.enabled` switch and an `OPENAI_API_KEY` in
+  `.env`; everything the agent sees is then sent to OpenAI.
 - **UEs:** UERANSIM simulates UEs and a gNB; each attached UE gets a tunnel interface
   (`uesimtun0`, …).
 
@@ -148,11 +150,16 @@ the user.
 | `prompts/system.txt` | Main system prompt; `prompts/subagents/*.txt` for specialists |
 | `.env` | Secrets: `CHAINLIT_AUTH_SECRET`, `TAVILY_API_KEY`, `HEDERA_OPERATOR_ID` / `HEDERA_OPERATOR_KEY` (DER), optional `EQTY_NOTARY_URL` |
 
-Current models: `gemma4:31b-cloud` (default), `gpt-oss:120b-cloud`, `nemotron-3-ultra:cloud`,
-and on the host Mac `local-ollama-qwen3.8` (qwen3.8:27b-mlx, main local pick),
-`local-ollama-nemotron-3.5-lightning` (30b-mlx, telecom-oriented), `local-ollama-gpt-oss`
-(gpt-oss:20b, fast) and `local-ollama-gemma4` (gemma4:26b MoE, lightweight); `qwen2.5:7b` is
-disabled. All enabled ones have `thinking: true`. Local entries keep context_window at 32K
+Current models (keys are `<provider>-<model>`, shown as-is in the picker):
+`openai-gpt-6-luna` (default; fast, low cost) and `openai-gpt-6-astra` (flagship), shown only when
+the OpenAI switch is on and a key is set; Ollama Cloud `ollama-gemma4:31b-cloud` (fallback default
+when OpenAI is unusable), `ollama-gpt-oss:120b-cloud`, `ollama-nemotron-3-ultra:cloud`; host Mac
+`ollama-qwen3.8:27b-mlx` (main local pick), `ollama-nemotron-3.5-lightning:30b-mlx`
+(telecom-oriented), `ollama-gpt-oss:20b` (fast), `ollama-gemma4:26b` (lightweight MoE);
+`ollama-qwen2.5:7b` disabled. All enabled ones have `thinking: true`. Local entries keep
+context_window at 32K because it sizes the KV cache in the Mac's RAM.
+For OpenAI, "Use Model Reasoning" off lowers `reasoning.effort` and "Show Model Thinking" streams
+OpenAI's reasoning summary (raw reasoning is never returned). Local entries keep context_window at 32K
 because it sizes the KV cache in the Mac's RAM.
 
 ## Code layout

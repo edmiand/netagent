@@ -9,8 +9,8 @@ Tool list mirrors app.py's _build_tools() (MCP + local RAG/release tools) but
 omits the Hedera tools so a test run never writes to the public HCS topic,
 and skips the Human Approval wrapper (no UI to approve in).
 
-  .venv/bin/python scripts/rca_bench.py local-ollama-qwen3.8
-  .venv/bin/python scripts/rca_bench.py local-ollama-qwen3.8 --no-reasoning
+  .venv/bin/python scripts/rca_bench.py ollama-qwen3.8:27b-mlx
+  .venv/bin/python scripts/rca_bench.py ollama-qwen3.8:27b-mlx --no-reasoning
 """
 
 import argparse

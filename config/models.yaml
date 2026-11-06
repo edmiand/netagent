@@ -1,97 +1,147 @@
+# Model registry. Each key is what the ⚙️ Settings picker shows, named
+# `<provider>-<model>`: `ollama-<Ollama tag>` or `openai-<OpenAI model id>`.
+# `model:` is the provider-side name the key stands for.
+#
 # `active` is the default model for every new chat. Users can switch models
 # mid-session from the ⚙️ Settings panel in the web UI (per-chat, no restart).
-# The picker lists every model below except those with `enabled: false`;
-# `active` is always listed even if disabled. Editing this file needs an app
-# restart to take effect.
+# If `active` can't be used right now (its provider is switched off, or an
+# OpenAI key is missing from .env), new chats fall back to the first usable
+# entry below in file order — keep the preferred fallback first among the
+# Ollama entries. The picker lists every usable entry except those with
+# `enabled: false`. Editing this file needs an app restart to take effect.
 #
-# model: optional Ollama model name when it differs from the key (the key is
-#   what the picker shows). Defaults to the key itself.
-#
-# context_window: model's context length in tokens, per its ollama.com page.
-#   Mapped to Ollama's num_ctx. For `-cloud` models this is advisory — the
-#   cloud host enforces the real limit; for local models it sizes the KV cache
-#   (and RAM use) directly.
-active: gemma4:31b-cloud
+# context_window (Ollama only): model's context length in tokens, per its
+#   ollama.com page. Mapped to Ollama's num_ctx. For `-cloud` models this is
+#   advisory — the cloud host enforces the real limit; for local models it sizes
+#   the KV cache (and RAM use) directly.
+active: openai-gpt-6-luna
+
+# provider: each entry below is `provider: ollama` (the default when omitted) or
+#   `provider: openai`. This switch turns a whole provider on or off: a switched-off
+#   provider's entries vanish from the picker and can't be loaded. OpenAI entries also
+#   stay hidden until their API key (`api_key_env`, default OPENAI_API_KEY) is in .env.
+#   OpenAI is a separate outside processor: everything the agent sees — chat text and
+#   tool results with IMSIs, UE IPs, any K/OPc typed in, get_ue_trace auth data — is sent
+#   to it. Set `openai.enabled: false` on any deployment with real subscribers.
+providers:
+  ollama:
+    enabled: true
+  openai:
+    enabled: true
 
 models:
-  gpt-oss:120b-cloud:
-    base_url: http://localhost:11434
-    temperature: 0
+  # openai-* — OpenAI API (Responses API, store=false; see agent/llm.py). `model:` is the
+  # OpenAI model id; checked on developers.openai.com 2026-11-05. No `temperature`: these
+  # are reasoning models, which reject it unless effort is "none". thinking: true shows
+  # the two reasoning switches — "Use Model Reasoning" off uses `reasoning_effort_off`,
+  # "Show Model Thinking" streams OpenAI's reasoning *summary* (raw reasoning is never
+  # returned; summaries may need OpenAI organization verification). `base_url` is
+  # optional (Azure OpenAI or another OpenAI-compatible server). No `context_window`:
+  # the provider fixes it.
+  openai-gpt-6-luna:
+    # Default. Fastest and cheapest. Effort none|low|medium (default)|high|xhigh|max. 1.05M ctx.
+    provider: openai
+    model: gpt-6-luna
+    api_key_env: OPENAI_API_KEY
     max_tokens: 4096
-    context_window: 131072      # 128K — ollama.com/library/gpt-oss
     thinking: true
-    description: "Cloud OSS model via local Ollama"
+    reasoning_effort: medium
+    reasoning_effort_off: none     # reasoning fully off
+    description: "OpenAI API — fast and low cost; data leaves the site"
 
-  gemma4:31b-cloud:
+  openai-gpt-6-astra:
+    # Flagship, complex reasoning. Effort low|medium|high|xhigh|max — no "none". 1.05M ctx.
+    provider: openai
+    model: gpt-6-astra
+    api_key_env: OPENAI_API_KEY
+    max_tokens: 4096
+    thinking: true
+    reasoning_effort: medium
+    reasoning_effort_off: low      # lowest it allows
+    description: "OpenAI API — flagship reasoning; data leaves the site"
+
+  # Ollama Cloud models via the local Ollama gateway (no GPU needed). The first one is the
+  # fallback default when the OpenAI default above can't be used.
+  ollama-gemma4:31b-cloud:
+    model: gemma4:31b-cloud
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
     context_window: 262144      # 256K — ollama.com/library/gemma4:31b-cloud
     thinking: true
-    description: "Cloud Google model via local Ollama"
+    description: "Ollama Cloud — Google Gemma 4 31B"
 
-  nemotron-3-ultra:cloud:
+  ollama-gpt-oss:120b-cloud:
+    model: gpt-oss:120b-cloud
+    base_url: http://localhost:11434
+    temperature: 0
+    max_tokens: 4096
+    context_window: 131072      # 128K — ollama.com/library/gpt-oss
+    thinking: true
+    description: "Ollama Cloud — OpenAI gpt-oss 120B"
+
+  ollama-nemotron-3-ultra:cloud:
+    model: nemotron-3-ultra:cloud
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096
     context_window: 1048576     # 1M — ollama.com/library/nemotron-3-ultra:cloud
     thinking: true
-    description: "NVIDIA Nemotron-3-Ultra model via local Ollama"
+    description: "Ollama Cloud — NVIDIA Nemotron 3 Ultra"
 
-  # local-ollama-* — models on the host Mac (Apple Silicon), reached via the VM's gateway IP:
-  # on-prem inference, no prompt or tool output leaves the site. The Mac must run Ollama with
+  # Models on the host Mac (Apple Silicon), reached via the VM's gateway IP: on-prem
+  # inference, no prompt or tool output leaves the site. The Mac must run Ollama with
   # OLLAMA_HOST=0.0.0.0 (or the bridge IP), and each model must be pulled there first
-  # (`ollama pull <model>`), or picking it fails on the first message. The key is the picker
-  # label; `model:` is the Ollama tag. Any model added here must support tools and thinking
-  # (`ollama show <model>`). Tags, capabilities and max context checked on ollama.com
-  # 2026-11-04. context_window is kept at 32K: for a local model it sizes the KV cache in the
-  # Mac's RAM, so raise it only if memory allows (max noted per entry). Vet each with
-  # `scripts/rca_bench.py <key>` before making one the default.
-
-  local-ollama-qwen3.8:
-    # Main pick. Newest Qwen; tools, thinking, vision. MLX build (Apple Silicon). 18 GB.
+  # (`ollama pull <model>`), or picking it fails on the first message. Any model added here
+  # must support tools and thinking (`ollama show <model>`). Tags, capabilities and max
+  # context checked on ollama.com 2026-11-04. context_window is kept at 32K: for a local
+  # model it sizes the KV cache in the Mac's RAM, so raise it only if memory allows (max
+  # noted per entry). Vet each with `scripts/rca_bench.py <key>` before making one the default.
+  ollama-qwen3.8:27b-mlx:
+    # Main local pick. Newest Qwen; tools, thinking, vision. MLX build (Apple Silicon). 18 GB.
     model: qwen3.8:27b-mlx
-    base_url: &local_ollama http://192.168.64.1:11434   # shared by the local-ollama-* entries
+    base_url: &mac_ollama http://192.168.64.1:11434   # shared by the host-Mac entries
     temperature: 0
     max_tokens: 4096
     context_window: 32768       # max 256K — ollama.com/library/qwen3.8
     thinking: true
-    description: "Host Mac — Qwen 3.8 27B (MLX), main local pick"
+    description: "Host Mac — main local pick; data stays on site"
 
-  local-ollama-nemotron-3.5-lightning:
+  ollama-nemotron-3.5-lightning:30b-mlx:
     # Test against it. Tools, thinking, text only; its page lists telecom uses (alarm triage,
     # config optimization). MLX build. 19 GB.
     model: nemotron-3.5-lightning:30b-mlx
-    base_url: *local_ollama
+    base_url: *mac_ollama
     temperature: 0
     max_tokens: 4096
     context_window: 32768       # max 256K for the MLX tag — ollama.com/library/nemotron-3.5-lightning
     thinking: true
-    description: "Host Mac — Nemotron 3.5 Lightning 30B (MLX), telecom-oriented"
+    description: "Host Mac — telecom-oriented; data stays on site"
 
-  local-ollama-gpt-oss:
+  ollama-gpt-oss:20b:
     # Fast option. Reliable tool calling, adjustable reasoning effort; small enough to run
     # alongside a larger model. 14 GB.
     model: gpt-oss:20b
-    base_url: *local_ollama
+    base_url: *mac_ollama
     temperature: 0
     max_tokens: 4096
     context_window: 32768       # max 128K — ollama.com/library/gpt-oss
     thinking: true
-    description: "Host Mac — gpt-oss 20B, fast local option"
+    description: "Host Mac — fast local option; data stays on site"
 
-  local-ollama-gemma4:
+  ollama-gemma4:26b:
     # Lightweight option. Mixture of experts, ~4B active parameters per token, so fast; tools,
     # thinking, vision. 16–19 GB.
     model: gemma4:26b
-    base_url: *local_ollama
+    base_url: *mac_ollama
     temperature: 0
     max_tokens: 4096
     context_window: 32768       # max 256K — ollama.com/library/gemma4
     thinking: true
-    description: "Host Mac — Gemma 4 26B MoE, lightweight local option"
+    description: "Host Mac — lightweight MoE; data stays on site"
 
-  qwen2.5:7b:
+  ollama-qwen2.5:7b:
+    model: qwen2.5:7b
     base_url: http://localhost:11434
     temperature: 0
     max_tokens: 4096

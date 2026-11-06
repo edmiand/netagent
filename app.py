@@ -215,7 +215,7 @@ def _build_widgets() -> list:
         widgets.append(Select(
             id="model_name",
             label="Model",
-            description="Ollama model backing the agent. Switching rebuilds the agent for this chat only — config/models.yaml sets the default for new chats.",
+            description="Model backing the agent (Ollama or OpenAI API). Switching rebuilds the agent for this chat only — config/models.yaml sets the default for new chats.",
             items={model_label(m): m for m in available},
             initial_value=model_name if model_name in available else available[0],
         ))
@@ -690,6 +690,13 @@ async def _run_agent(user_input: str):
                             continue
                         if p.get("type") == "thinking" and p.get("thinking"):
                             reasoning_tokens.append(p["thinking"])
+                        elif p.get("type") == "reasoning":
+                            # ChatOpenAI (Responses API): the reasoning *summary* streams as
+                            # {"type": "reasoning", "summary": [{"text": ...}]}; blocks that
+                            # only carry encrypted_content have no text and are skipped.
+                            for part in p.get("summary") or []:
+                                if isinstance(part, dict) and part.get("text"):
+                                    reasoning_tokens.append(part["text"])
                         elif p.get("type") == "text" and p.get("text"):
                             text_tokens.append(p["text"])
 

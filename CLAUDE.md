@@ -16,11 +16,17 @@ All tool calls stream visibly as Steps in the Chainlit UI.
 - config/models.yaml  — model registry + default ('active'); per-model `enabled: false`
   hides an entry from the in-chat picker, `context_window` → Ollama num_ctx (per the
   model's ollama.com page), optional `model:` = Ollama model name when it differs from the
-  key (the key is the picker label — the `local-ollama-*` entries use this for models on the
-  host Mac, sharing one `base_url` via a YAML anchor; context_window kept at 32K there since it
-  sizes the Mac's KV cache); also holds the `embeddings:` block
+  key. Keys are `<provider>-<model>` (`ollama-<tag>`, `openai-<model id>`) and are the picker
+  label (shown alone when it contains the model name). `active` is `openai-gpt-6-luna`; when the
+  active entry is unusable (provider off / no key) get_active_model_name() falls back to the first
+  usable entry in file order (`ollama-gemma4:31b-cloud`). Host-Mac entries share one `base_url`
+  via the `&mac_ollama` YAML anchor; context_window kept at 32K there since it sizes the Mac's
+  KV cache. Also holds the `embeddings:` block. `provider: openai` entries
+  (`openai-*`) use the OpenAI API instead of Ollama; the top-level `providers:` block switches a
+  whole provider on/off (see "OpenAI provider" below)
 - config/mcp.yaml     — MCP server URL (update VM1 IP on fresh deploy)
-- agent/llm.py        — LangChain model loader (reads models.yaml); also `get_embeddings()`
+- agent/llm.py        — LangChain model loader (reads models.yaml): ChatOllama, or ChatOpenAI for
+  `provider: openai`; also `get_embeddings()` (always Ollama)
 - agent/mcp_bridge.py — streamable HTTP client (MultiServerMCPClient, reads mcp.yaml)
 - agent/graph.py      — LangGraph ReAct agent
 - agent/subagents.py  — two specialist sub-agents (Connectivity, NF Health), each a bounded
@@ -181,12 +187,34 @@ Not yet confirmed in a real run: source capture on local tools other than hcs_li
 export after a failed turn, and recovery after pressing Stop (a stopped turn likely skips its
 export; the next turn's should include it).
 
+## OpenAI provider (agent/llm.py `_get_openai_llm`)
+- `provider: openai` entries build ChatOpenAI with `use_responses_api=True` (current reasoning
+  models only do tool calling over the Responses API), `store=False` (OpenAI keeps no
+  application state; reasoning comes back encrypted and is replayed from our own history;
+  30-day abuse-monitoring retention still applies) and `stream_usage=True` (feeds the 📊 Context step).
+- Shown in the picker only when `providers.openai.enabled: true` AND the entry's
+  `api_key_env` (default OPENAI_API_KEY) is set in .env; get_llm refuses otherwise.
+- Reasoning switches map to `reasoning.effort`: on → `reasoning_effort`, "Use Model Reasoning"
+  off → `reasoning_effort_off` (gpt-6-astra has no "none", so "low"). "Show Model Thinking" adds
+  `summary: "auto"`; app.py streams the summary from `{"type": "reasoning", "summary": [...]}`
+  blocks into the 💭 step. OpenAI never returns raw reasoning; summaries may need OpenAI org
+  verification. Specialists get the default effort with no summary.
+- No `temperature` on reasoning models (rejected unless effort is "none"); langchain-openai only
+  strips it automatically for gpt-5*, so the loader does it. No `context_window` (provider-fixed).
+- Embeddings stay on Ollama (the Chroma indexes were built with nomic-embed-text).
+- Privacy: everything the agent sees goes to OpenAI (IMSIs, UE IPs, any K/OPc, get_ue_trace
+  auth data). Set `providers.openai.enabled: false` on deployments with real subscribers.
+- Live-checked 2026-11-05 with gpt-6-luna: plain call, tool call, streamed reasoning summary
+  (1,034 reasoning tokens → summary text) and usage metadata. Not yet run: a full RCA via
+  rca_bench, or gpt-6-astra.
+
 ## Python environment
 - Python 3.11+ (pyproject.toml `requires-python`), venv at .venv/
 - Always use .venv/bin/python and .venv/bin/pip
 - Install: pip install -e . (pyproject.toml, hatchling build system, sole source of truth
   for pinned dependency versions — don't duplicate version numbers here, they drift)
-- Key deps: chainlit, langgraph, langchain-mcp-adapters, mcp, langchain-ollama, httpx,
+- Key deps: chainlit, langgraph, langchain-mcp-adapters, mcp, langchain-ollama,
+            langchain-openai (OpenAI provider), httpx,
             pyyaml, python-dotenv, sqlalchemy + aiosqlite (chat history persistence,
             data_layer.py), langchain-chroma, chromadb, langchain-text-splitters
             (RAG knowledge-base tool), tavily-python (release/advisory check tool),

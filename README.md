@@ -128,11 +128,12 @@ This app uses **cloud-hosted models** (`gemma4:31b-cloud`, `gpt-oss:120b-cloud`,
 `nemotron-3-ultra:cloud`) — no local GPU is required. Ollama serves as the API gateway only; the model
 computation runs in the cloud.
 
-No `ollama pull` is needed for chat. Verify Ollama is reachable and leave the
-default `active` entry in `config/models.yaml` as-is:
+No `ollama pull` is needed for chat. Verify Ollama is reachable. The default
+`active` entry in `config/models.yaml` is an OpenAI model; without an
+`OPENAI_API_KEY` in `.env`, new chats fall back to `ollama-gemma4:31b-cloud`:
 
 ```yaml
-active: gemma4:31b-cloud
+active: openai-gpt-6-luna
 ```
 
 > **Do not** pull `qwen2.5:7b` or other local chat models — they require a
@@ -198,13 +199,16 @@ servers:
 
 ### 7. Set the active model
 
-Edit `config/models.yaml` and set `active` to your preferred cloud model:
+Edit `config/models.yaml` and set `active` to your preferred model (keys are
+`ollama-<tag>` or `openai-<model>`):
 
 ```yaml
-active: gemma4:31b-cloud   # or gpt-oss:120b-cloud, nemotron-3-ultra:cloud
+active: openai-gpt-6-luna   # or ollama-gemma4:31b-cloud, ollama-gpt-oss:120b-cloud, …
 ```
 
-`active` is the default for every new chat. Users can also switch models
+`active` is the default for every new chat. If it can't be used (an OpenAI
+model without a key, or its provider switched off), new chats fall back to the
+first usable entry in the file. Users can also switch models
 mid-session from the ⚙️ Settings panel in the web UI (per-chat, no restart) —
 the picker lists every entry under `models:` except those marked
 `enabled: false`.
@@ -280,18 +284,31 @@ ollama pull nomic-embed-text          # embeddings model for the RAG tool
 ### Model — `config/models.yaml`
 
 ```yaml
-active: gemma4:31b-cloud   # ← default model for new chats
+active: openai-gpt-6-luna   # ← default model for new chats
 ```
 
-Available cloud entries: `gemma4:31b-cloud`, `gpt-oss:120b-cloud`, `nemotron-3-ultra:cloud`.  
-No GPU required — Ollama is used as a gateway only.  
-The `local-ollama-*` entries run on the host Mac (on-prem, nothing leaves the site):
-`local-ollama-qwen3.8` (main pick), `local-ollama-nemotron-3.5-lightning`, `local-ollama-gpt-oss`
-(fast) and `local-ollama-gemma4` (lightweight). Each `model:` field is the Ollama tag; pull it on
-the Mac first, and the Mac's Ollama must listen beyond localhost (`OLLAMA_HOST=0.0.0.0`). Vet a
-model with `scripts/rca_bench.py <key>` before making it the default.
-`qwen2.5:7b` is listed but `enabled: false`.  
+Every key is `<provider>-<model>`, and that key is what the picker shows:
+
+| Group | Entries |
+|---|---|
+| OpenAI API | `openai-gpt-6-luna` (default; fast, low cost), `openai-gpt-6-astra` (flagship reasoning) |
+| Ollama Cloud (no GPU) | `ollama-gemma4:31b-cloud` (fallback default), `ollama-gpt-oss:120b-cloud`, `ollama-nemotron-3-ultra:cloud` |
+| Host Mac (on-prem) | `ollama-qwen3.8:27b-mlx` (main local pick), `ollama-nemotron-3.5-lightning:30b-mlx`, `ollama-gpt-oss:20b` (fast), `ollama-gemma4:26b` (lightweight) |
+| Disabled | `ollama-qwen2.5:7b` (`enabled: false`) |
+
+Host-Mac models must be pulled on the Mac first, and the Mac's Ollama must listen beyond
+localhost (`OLLAMA_HOST=0.0.0.0`). Vet a model with `scripts/rca_bench.py <key>` before
+making it the default.  
 Restart Chainlit after changing `active` or the `models:` list.
+
+**OpenAI API models.** `openai-gpt-6-astra` (flagship reasoning) and `openai-gpt-6-luna` (fast,
+low cost) use the OpenAI API instead of Ollama (`provider: openai`). To offer them, put
+`OPENAI_API_KEY=` in `.env` and restart — they stay hidden from the picker until the key is set.
+`providers.openai.enabled: false` at the top of `models.yaml` switches all OpenAI entries off.
+**Everything the agent sees is sent to OpenAI**, including tool results with IMSIs, UE IPs and
+any K/OPc typed in — keep the switch off on any deployment with real subscribers. With
+"Show Model Thinking" on, the 💭 step shows OpenAI's reasoning *summary* (raw reasoning is never
+returned; summaries may require OpenAI organization verification). Embeddings stay on Ollama.
 
 **In-chat model picker.** The web UI's ⚙️ Settings panel shows a **Model**
 dropdown whenever more than one model is available. Switching it rebuilds the
@@ -480,10 +497,10 @@ Ask the agent about any 5G procedure and it will produce a Mermaid sequence diag
 ## Switching models
 
 ```bash
-# Edit config/models.yaml — choose from the cloud-hosted entries
-active: gpt-oss:120b-cloud   # or gemma4:31b-cloud, nemotron-3-ultra:cloud
+# Edit config/models.yaml — any key under models:
+active: ollama-gpt-oss:120b-cloud   # or openai-gpt-6-luna, ollama-gemma4:31b-cloud, …
 
-# No ollama pull needed — these models run in the cloud
+# No ollama pull needed for the -cloud and openai-* models
 
 # Restart the app
 ./netagent.sh restart
