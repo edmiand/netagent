@@ -8,6 +8,8 @@ from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
+from agent import guardian
+
 _CONFIG_PATH = Path(__file__).parent.parent / "config" / "models.yaml"
 
 
@@ -49,6 +51,8 @@ def model_unavailable_reason(model_name: str | None = None) -> str | None:
     """Why this entry can't be used right now, or None when it can."""
     name, model_block = _resolve_model(model_name)
     provider = model_provider(name)
+    if guardian.is_enabled() and provider not in guardian.SIGNED_PROVIDERS:
+        return f"Guardian mode signs {'/'.join(guardian.SIGNED_PROVIDERS)} models only (config/guardian.yaml)"
     if not provider_enabled(provider):
         return f"provider '{provider}' is disabled (config/models.yaml providers.{provider}.enabled)"
     if provider == "openai" and not _openai_api_key(model_block):
@@ -120,8 +124,9 @@ def get_llm(
     _, model_block = _resolve_model(model_name)
     if model_block.get("provider", "ollama") == "openai":
         return _get_openai_llm(model_block, model_name, thinking, suppress_thinking)
-    if not provider_enabled("ollama"):
-        raise RuntimeError("provider 'ollama' is disabled (config/models.yaml providers.ollama.enabled)")
+    reason = model_unavailable_reason(model_name)
+    if reason:
+        raise RuntimeError(f"Model {model_name or get_active_model_name()!r} unavailable: {reason}")
     kwargs: dict = dict(
         model=ollama_model_name(model_name),
         base_url=model_block["base_url"],

@@ -1,0 +1,28 @@
+# Guardian Platform mode — sign every chat-model call with Viper (see agent/guardian.py).
+#
+# When enabled:
+#   - only `provider: openai` models are offered (Ollama models can't be signed yet);
+#     an OpenAI entry must not set `base_url`, since the SDK points the client at the proxy
+#   - the supervisor and both specialists are built with the Guardian Agent SDK and
+#     register their definitions with the local Viper proxy at chat start; if the proxy
+#     is down or a name below isn't enrolled, the chat fails to start instead of
+#     sending unsigned calls
+#   - .env needs VIPER_PROXY_URL (e.g. http://127.0.0.1:8090) and OPENAI_API_KEY
+#
+# Each name below must be enrolled on this machine and registered with the gateway:
+#   viper agent add <name>
+#   viper agent register <name> --provisioning-token <token>
+# then restart `viper proxy`, which loads enrolled agents when it starts.
+# All three roles sign as the one agent `netagent` (registered on the hosted suite,
+# associated with the project); each registers its own definition under that name.
+# To govern the specialists separately in Guardian, register their own names
+# (e.g. netagent-connectivity, netagent-nf-health) and set them here.
+#
+# Not signed even when enabled: MCP calls to VM1, Tavily, Hedera, and the Ollama
+# embeddings behind search_knowledge_base and incident memory.
+enabled: true
+
+agents:
+  supervisor: netagent
+  investigate_connectivity: netagent
+  investigate_nf_health: netagent

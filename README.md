@@ -351,9 +351,10 @@ lineage_viewer.py       # /lineage/<chat_id> routes for the 🧬 Lineage viewer 
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
   mcp_bridge.py        # Streamable HTTP client via MultiServerMCPClient
-  graph.py             # LangGraph ReAct agent (create_react_agent)
+  graph.py             # Supervisor agent (LangChain create_agent; the Guardian SDK's in Guardian mode)
   subagents.py         # The two read-only specialist sub-agents
-  approval.py          # wrap_with_approval() — generic, works on any tool (MCP or local)
+  approval.py          # HumanApprovalMiddleware — approve/deny gate on every tool call
+  guardian.py          # Guardian Platform mode: Viper-signed model calls (config/guardian.yaml)
   tools/
     rag.py              # search_knowledge_base — local RAG tool over the Chroma store
     release_check.py    # check_open5gs_release_info — Tavily upstream release lookup

@@ -21,7 +21,8 @@ from agent.llm import get_active_model_name, list_available_models, model_label,
 from agent.mcp_bridge import get_mcp_tools, get_mcp_url
 from agent.graph import create_agent
 from langgraph.checkpoint.memory import MemorySaver
-from agent.approval import wrap_with_approval
+from agent import guardian
+from agent.approval import ask_in_chainlit
 from agent.subagents import SPECIALIST_LABELS
 from agent.tools.rag import search_knowledge_base
 from agent.tools.release_check import check_open5gs_release_info
@@ -169,7 +170,9 @@ def _build_tools(raw_tools: list) -> list:
     if hedera.is_enabled():
         extra_tools += [hedera.hcs_submit_message, hedera.hcs_read_message,
                         hedera.hcs_list_recent, hedera.hcs_verify_report]
-    return wrap_with_approval(raw_tools + extra_tools)
+    # Human Approval Mode is middleware on each agent (agent/approval.py), so the
+    # agents get the real tools, which Guardian mode needs to record MCP servers.
+    return raw_tools + extra_tools
 
 
 def _make_scenario_actions() -> list[cl.Action]:
@@ -303,6 +306,11 @@ async def on_chat_start():
         tools, thinking=thinking_capable, suppress_thinking=False,
         model_name=model_name, checkpointer=checkpointer,
     )
+    # Guardian mode: register the supervisor's definition with the Viper proxy now, so
+    # a stopped proxy or an unenrolled agent fails here, visibly, instead of on the
+    # first question. Nothing is sent to a model unsigned either way.
+    if not await _register_or_report(agent, "No model calls will be made."):
+        return
     cl.user_session.set("agent", agent)
     cl.user_session.set("thread_id", str(uuid.uuid4()))
 
@@ -392,27 +400,49 @@ async def on_fingerprint_report(action: cl.Action):
     )))
 
 
-def _rebuild_agent(thinking: bool, use_reasoning: bool, model_name: str | None = None) -> bool:
-    """Rebuild the agent with the given model + thinking/reasoning flags. Returns False if session not ready."""
+async def _register_or_report(agent, consequence: str) -> bool:
+    """Guardian mode: register `agent`'s definition with the Viper proxy; on failure, say
+    so in the chat and return False. Always True when Guardian mode is off."""
+    try:
+        await guardian.register(agent)
+        return True
+    except Exception as exc:
+        await _send(cl.Message(content=(
+            f"🛑 **Guardian mode: can't register `{guardian.agent_name('supervisor')}` with "
+            f"the Viper proxy.** {consequence}\n\n`{type(exc).__name__}: {exc}`\n\n"
+            "Check that `viper proxy` is running at `VIPER_PROXY_URL` and the agents in "
+            "config/guardian.yaml are enrolled.")))
+        return False
+
+
+async def _rebuild_agent(thinking: bool, use_reasoning: bool, model_name: str | None = None) -> bool:
+    """Rebuild the agent with the given model + thinking/reasoning flags.
+
+    Returns False if the session isn't ready, or if Guardian mode can't register the new
+    agent — then the chat keeps its current agent and settings unchanged.
+    """
     raw_tools = cl.user_session.get("raw_tools")
     if not raw_tools:
         return False
     if model_name is None:
         model_name = cl.user_session.get("model_name") or get_active_model_name()
     tools = _build_tools(raw_tools)
-    cl.user_session.set("agent", create_agent(
+    agent = create_agent(
         tools, thinking=thinking, suppress_thinking=not use_reasoning, model_name=model_name,
         checkpointer=cl.user_session.get("checkpointer"),
-    ))
+    )
+    if not await _register_or_report(agent, "This chat keeps its current model and settings."):
+        return False
+    cl.user_session.set("agent", agent)
     cl.user_session.set("show_thinking", thinking)
     cl.user_session.set("use_model_reasoning", use_reasoning)
     cl.user_session.set("model_name", model_name)
     return True
 
 
-def _refresh_tools() -> bool:
+async def _refresh_tools() -> bool:
     """Rebuild the agent's tool list only (e.g. after a memory toggle), keeping the current thinking/reasoning config."""
-    return _rebuild_agent(
+    return await _rebuild_agent(
         cl.user_session.get("show_thinking", True),
         cl.user_session.get("use_model_reasoning", True),
     )
@@ -450,7 +480,7 @@ async def on_settings_update(settings: dict):
     thinking_changed = show_thinking != cl.user_session.get("show_thinking", True)
 
     if model_changed or reasoning_changed or thinking_changed:
-        if _rebuild_agent(show_thinking, use_reasoning, model_name=new_model):
+        if await _rebuild_agent(show_thinking, use_reasoning, model_name=new_model):
             if model_changed:
                 await cl.Message(content=f"🔀 Model switched to **`{model_label(new_model)}`** for this chat.").send()
             elif reasoning_changed:
@@ -469,7 +499,10 @@ async def on_settings_update(settings: dict):
     memory_changed = memory_enabled != cl.user_session.get("memory_learning_enabled", False)
     cl.user_session.set("memory_learning_enabled", memory_enabled)
     if memory_changed:
-        _refresh_tools()
+        if not await _refresh_tools():
+            # The agent wasn't rebuilt, so its tools don't match the toggle; undo it.
+            cl.user_session.set("memory_learning_enabled", not memory_enabled)
+            return
         status_m = "enabled" if memory_enabled else "disabled"
         await cl.Message(content=f"🧠 Memory & Learning **{status_m}**.").send()
 
@@ -591,7 +624,9 @@ async def _run_agent(user_input: str):
         async for event in agent.astream_events(
             {"messages": [HumanMessage(content=user_input)]},
             config={
-                "configurable": {"thread_id": thread_id},
+                # approve_tool_call: Human Approval Mode's dialog (agent/approval.py),
+                # read by the middleware on every agent, specialists included.
+                "configurable": {"thread_id": thread_id, "approve_tool_call": ask_in_chainlit},
                 "metadata": {"thread_id": lineage_id},
                 "callbacks": [eqty_handler],
             },

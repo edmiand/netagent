@@ -8,6 +8,7 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "chainlit>=2.12.0",
+    "langchain>=1.2,<2",
     "langgraph>=1.2.11",
     "langchain-ollama>=1.1.0",
     "langchain-openai>=1.7.4",
@@ -28,6 +29,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Guardian Platform mode (config/guardian.yaml). The SDK is pre-release: install it
+# from EQTY Lab's Cloudsmith index, or `pip install --no-deps ~/guardian/sdks/python`.
+guardian = ["eqty-guardian-agent[langchain,mcp]"]
 dev = ["pytest", "pytest-asyncio", "ruff"]
 
 [tool.hatch.build.targets.wheel]

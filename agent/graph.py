@@ -1,6 +1,7 @@
 from pathlib import Path
-from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
+from agent.approval import HumanApprovalMiddleware
+from agent.guardian import build_agent
 from agent.llm import get_llm
 from agent.subagents import build_specialist_tools
 
@@ -20,7 +21,8 @@ def create_agent(
     # A caller that rebuilds the agent mid-conversation (model switch, reasoning
     # toggle, …) must pass the SAME checkpointer so the thread's message history
     # survives the swap — a fresh MemorySaver would start the agent amnesiac.
-    return create_react_agent(
-        llm, tools + specialist_tools, prompt=system_prompt,
+    return build_agent(
+        llm, tools + specialist_tools, role="supervisor", system_prompt=system_prompt,
+        middleware=[HumanApprovalMiddleware()],
         checkpointer=checkpointer or MemorySaver(),
     )
