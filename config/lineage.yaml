@@ -9,3 +9,17 @@
 # Manifests hold chat text and tool data in plaintext (IMSIs, UE IPs, any K/OPc typed in,
 # 5G-AKA data from get_ue_trace). Set false on any deployment with real subscribers.
 viewer_enabled: true
+
+# Register each chat's lineage with Guardian — see lineage_registry.py.
+#
+# enabled: true → every chat becomes a lineage graph under project_uuid (Guardian → project →
+# Lineage Graphs), uploaded after every turn by the EQTY SDK. Needs EQTY_API_KEY in .env: an
+# API key with Create Declarations + View Project Data on that project. A failed upload is
+# logged and the chat carries on; the local manifests/ file is written either way.
+#
+# Everything in the manifest is uploaded, in plaintext: chat text and tool data (IMSIs, UE IPs,
+# any K/OPc typed in). Every member of the project can read it. Restart NetAgent after a change.
+register:
+  enabled: true
+  integrity_service_url: https://suite.dev.eqtylab.io/integrityService
+  project_uuid: 8e8e77bc-a50f-4c8c-bf92-6c36e140fd6a

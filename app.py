@@ -29,6 +29,7 @@ from agent.tools.release_check import check_open5gs_release_info
 from agent.tools.memory import recall_similar_incidents, record_incident
 from agent.tools import hedera
 from data_layer import make_data_layer
+import lineage_registry
 import lineage_viewer
 from chainlit.config import config as _cl_config
 from chainlit.server import app as _cl_app
@@ -38,7 +39,14 @@ from chainlit.server import app as _cl_app
 # Every payload is stored, so .eqty_sdk/ and manifests/ hold chat text and tool
 # arguments in plaintext, including IMSIs, UE IPs and any K/OPc typed to create a
 # subscriber. Both are gitignored: treat them as sensitive and don't share them.
-init(default_context=Context.new("NetAgent")).set_store_all_blobs(True)
+# With config/lineage.yaml `register` on, the root is the Guardian project instead, so
+# each chat's context is a lineage graph under it, uploaded after every turn
+# (lineage_registry.py) — that upload carries the same plaintext.
+_lineage_project = lineage_registry.project_uuid()
+init(
+    default_context=Context.from_uuid(_lineage_project) if _lineage_project
+    else Context.new("NetAgent")
+).set_store_all_blobs(True)
 _eqty_notary = os.environ.get("EQTY_NOTARY_URL")
 set_active_signer(
     Signer.vcomp_notary(url=_eqty_notary, name="netagent-notary", _load_if_exists=True)
@@ -612,7 +620,9 @@ async def _run_agent(user_input: str):
 
     # One handler per turn, never shared: a user can start a turn while another is
     # still running. The handler reuses one EQTY context per metadata thread_id across turns.
-    eqty_handler = EqtyCallbackHandler()
+    # With a URL it also registers this chat's graph with Integrity Service when the turn
+    # ends; a failed upload is logged, never raised into the chat.
+    eqty_handler = EqtyCallbackHandler(integrity_service_url=lineage_registry.integrity_service_url())
     # Lineage is keyed by the Chainlit chat id (the one in the browser URL), not the
     # checkpointer's thread_id, which is per-session and replaced after a failed turn.
     # An explicit metadata thread_id wins over the one LangGraph copies from configurable,

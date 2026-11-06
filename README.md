@@ -347,6 +347,7 @@ app.py                  # Chainlit entry point — chat lifecycle + streaming
 start.py               # Wrapper: syncs branding.yaml → config.toml, then launches Chainlit
 netagent.sh           # Process manager: start / stop / restart / status / logs
 data_layer.py           # SQLite chat history persistence (sqlalchemy + aiosqlite)
+lineage_registry.py     # Registers each chat's lineage with Guardian (config/lineage.yaml register)
 lineage_viewer.py       # /lineage/<chat_id> routes for the 🧬 Lineage viewer (+ lineage_viewer.html)
 agent/
   llm.py               # LangChain model loader (reads config/models.yaml) + get_embeddings()
@@ -364,7 +365,7 @@ config/
   models.yaml          # Model registry, active model selection, embeddings config
   mcp.yaml             # MCP server URL (update VM1 IP here; gitignored)
   hedera.yaml          # Audit trail: enabled, network, mirror/explorer URLs, topic
-  lineage.yaml         # Lineage viewer on/off
+  lineage.yaml         # Lineage viewer on/off, registration with Guardian
   branding.yaml        # Agent name, welcome title, logo file
 prompts/
   system.txt           # Agent system prompt — behaviour rules and formatting
@@ -492,6 +493,10 @@ Ask the agent about any 5G procedure and it will produce a Mermaid sequence diag
   reach the app and has a link can open a manifest — and manifests hold tool data (IMSIs, UE IPs,
   keys) in plaintext. Set `config/lineage.yaml` `viewer_enabled: false` on any deployment with
   real subscribers, and run `chmod 700 .eqty_sdk` (signing key) after the first run.
+- **Lineage in Guardian.** With `config/lineage.yaml` `register.enabled: true` and `EQTY_API_KEY`
+  in `.env` (Create Declarations + View Project Data on the project), each chat is also registered
+  as a lineage graph under the Guardian project, on its **Lineage Graphs** page, updated after
+  every turn (`lineage_registry.py`). It uploads the same plaintext the manifest holds.
 
 ---
 
