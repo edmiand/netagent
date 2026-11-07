@@ -320,3 +320,7 @@ export; the next turn's should include it).
   before the final answer instead of hiding them behind a generic "Thinking…" step.
   Changing either setting rebuilds the agent (agent/graph.py's create_agent is not
   session-persistent across this toggle) — see app.py's on_settings_update/_rebuild_agent.
+  OpenAI models choose their own reasoning depth and often use 0 reasoning tokens on easy
+  turns (e.g. "how many UEs are attached?"), so no 💭 step appears. Not a bug: when Show
+  Model Thinking is on and every main-agent call in the turn reported 0 reasoning tokens,
+  app.py adds a collapsed "💭 No reasoning needed" step. Ollama reports no count, so it never shows.

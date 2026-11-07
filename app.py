@@ -606,6 +606,10 @@ async def _run_agent(user_input: str):
     show_thinking: bool = cl.user_session.get("show_thinking", False)
     reasoning_step: cl.Step | None = None
     last_usage: dict | None = None
+    # Reasoning tokens per main-agent model call (None when the provider doesn't report
+    # them, e.g. Ollama) — lets the turn say so when the model chose not to reason at all.
+    reasoning_counts: list[int | None] = []
+    reasoning_shown = False
 
     thinking_step: cl.Step | None = None
     if not show_thinking:
@@ -715,6 +719,9 @@ async def _run_agent(user_input: str):
                 usage = getattr(event["data"].get("output"), "usage_metadata", None)
                 if usage and usage.get("input_tokens") is not None:
                     last_usage = usage
+                if tools_active == 0:
+                    details = (usage or {}).get("output_token_details") or {}
+                    reasoning_counts.append(details.get("reasoning"))
 
             elif kind == "on_chat_model_stream" and tools_active == 0:
                 chunk = event["data"]["chunk"]
@@ -750,6 +757,7 @@ async def _run_agent(user_input: str):
                     if reasoning_step is None:
                         reasoning_step = cl.Step(name="💭 Reasoning", type="tool")
                         await reasoning_step.__aenter__()
+                        reasoning_shown = True
                     for token in reasoning_tokens:
                         await reasoning_step.stream_token(token)
 
@@ -836,6 +844,16 @@ async def _run_agent(user_input: str):
         await _send(cl.Message(content="", elements=images))
     else:
         await current_msg.update()
+
+    # With Show Model Thinking on, an adaptive-effort model (OpenAI) may skip reasoning on
+    # an easy turn; say so rather than leave the 💭 step silently missing. Only when every
+    # main-agent call reported exactly 0 reasoning tokens — providers that report nothing
+    # (Ollama) never get the note.
+    if (show_thinking and not reasoning_shown and reasoning_counts
+            and all(c == 0 for c in reasoning_counts)
+            and not current_msg.content.startswith("❌")):
+        async with cl.Step(name="💭 No reasoning needed", type="tool", default_open=False) as note:
+            note.output = "The model answered this turn without reasoning (0 reasoning tokens)."
 
     if last_usage is not None:
         input_tokens = last_usage["input_tokens"]
